@@ -32,7 +32,63 @@ var (
 	ErrBadAuthRequest  = errors.New("bad authorization request")
 	ErrNotFoundInCache = errors.New("not found in cache")
 	Storage            sync.Map
+	poolHTTP           *HTTPClientPool
 )
+
+type HTTPClient struct {
+	*http.Client
+	busy bool
+	id   int
+	req  *http.Request
+	buf  *bytes.Buffer
+}
+
+type HTTPClientPool struct {
+	muPool  sync.Mutex
+	clients []*HTTPClient
+	freeCnt int
+	ch      chan *HTTPClient
+}
+
+func NewHTTPClientPool(size int) *HTTPClientPool {
+	p := &HTTPClientPool{}
+	p.clients = make([]*HTTPClient, 0, size)
+	for i := 0; i < size; i++ {
+
+		buf := bytes.NewBufferString("token_type_hint=access_token&token=")
+		req, _ := http.NewRequest("POST", URL, buf)
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		c := &HTTPClient{Client: NewHTTPClient(0), id: i, req: req, buf: buf}
+		p.clients = append(p.clients, c)
+	}
+	p.ch = make(chan *HTTPClient)
+	go func() {
+		p.ch <- p.clients[0]
+		// log.Println("NewHTTPClientPool put client to pool")
+	}()
+	return p
+}
+
+func (p *HTTPClientPool) GetFromPool() *HTTPClient {
+	p.muPool.Lock()
+	defer p.muPool.Unlock()
+	for c, ok := <-p.ch; ok; {
+		go func() {
+			for _, cc := range p.clients {
+				if !cc.busy {
+					p.ch <- cc
+					// log.Println("GetFromPool put client to pool ", cc.id)
+				}
+			}
+		}()
+		// log.Println("GetFromPool get client from pull ", c.id)
+		c.busy = true
+		return c
+	}
+
+	return nil
+}
 
 type ErrTokenInactive struct {
 	token string
@@ -91,23 +147,29 @@ func (e *ErrTokenInactive) Error() string {
 	return fmt.Sprintf("token %s inactive", e.token)
 }
 
+var netTransport *http.Transport
+
 func NewHTTPClient(timeout time.Duration) *http.Client {
 	clientTimeout := defaultClientTimeout
 	if timeout > 0 {
 		clientTimeout = timeout
 	}
-	dialer := &net.Dialer{
-		Timeout: clientTimeout,
-	}
 
-	netTransport := &http.Transport{
-		Dial:                  dialer.Dial,
-		TLSHandshakeTimeout:   clientTimeout,
-		ExpectContinueTimeout: clientTimeout,
-		IdleConnTimeout:       clientTimeout,
-		ResponseHeaderTimeout: clientTimeout,
-	}
+	if netTransport == nil {
+		dialer := &net.Dialer{
+			Timeout: clientTimeout,
+		}
 
+		netTransport = &http.Transport{
+			MaxIdleConns:          1024,
+			MaxIdleConnsPerHost:   1024,
+			Dial:                  dialer.Dial,
+			TLSHandshakeTimeout:   clientTimeout,
+			ExpectContinueTimeout: clientTimeout,
+			IdleConnTimeout:       clientTimeout,
+			ResponseHeaderTimeout: clientTimeout,
+		}
+	}
 	return &http.Client{
 		Transport: netTransport,
 		Timeout:   clientTimeout,
@@ -167,13 +229,29 @@ func IntrospectRequest(r *http.Request) (*models.Introspection, error) {
 	return introspectToken(token)
 }
 
+var URL = "http://192.168.100.48:30611" + introspectEndpoint
+
 func introspectToken(token string) (*models.Introspection, error) {
-	URL := "http://192.168.100.48:30611" + introspectEndpoint
 	request := bytes.NewBufferString("token_type_hint=access_token&token=" + token)
 
-	client := NewHTTPClient(0)
-	response, err := client.Post(URL, "application/x-www-form-urlencoded", request)
+	client := poolHTTP.GetFromPool()
+	defer func() {
+		client.busy = false
+	}()
+	req, err := http.NewRequest("POST", URL, request)
 	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	// n, err := client.buf.WriteString(token)
+	// fmt.Println(n, err, client.buf.String())
+	// request.WriteString(token)
+
+	response, err := client.Do(req)
+	if err != nil {
+		// fmt.Println("err: ", err)
+		// fmt.Println("response: ", response)
 		return nil, err
 	}
 	defer response.Body.Close()
@@ -189,6 +267,8 @@ func introspectToken(token string) (*models.Introspection, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// fmt.Printf("%+v/n", jData)
 
 	if !*jData.Active {
 		return nil, &ErrTokenInactive{token: token}
@@ -217,11 +297,11 @@ func copyHeader(dst, src http.Header) {
 }
 
 func handleHTTP(w http.ResponseWriter, req *http.Request) {
-	// _, err := IntrospectRequest(req)
-	// if _, ok := err.(*ErrTokenInactive); ok {
-	// 	w.WriteHeader(http.StatusUnauthorized)
-	// 	return
-	// }
+	_, err := IntrospectRequest(req)
+	if _, ok := err.(*ErrTokenInactive); ok {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
 
 	// bufReq := new(bytes.Buffer)
 	// _, err = io.Copy(bufReq, req.Body)
@@ -244,13 +324,13 @@ func handleHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	requestIDHydration(req)
-	for k, vv := range req.Header {
-		for _, v := range vv {
-			log.Print(k, ": ", v)
-		}
-	}
+	// for k, vv := range req.Header {
+	// 	for _, v := range vv {
+	// 		log.Print(k, ": ", v)
+	// 	}
+	// }
 
-	log.Println(req.Method, req.Host)
+	// log.Println(req.Method, req.Host)
 	resp, err := http.DefaultTransport.RoundTrip(req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
@@ -279,6 +359,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func Start() {
+	poolHTTP = NewHTTPClientPool(20)
 	s := &http.Server{
 		Addr:           ":8080",
 		Handler:        http.HandlerFunc(proxyHandler),
