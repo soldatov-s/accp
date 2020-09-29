@@ -1,0 +1,47 @@
+logger:
+  nocoloredoutput: true
+  withtrace: false
+  level: info
+
+introspector:
+  dsn: http://192.168.100.48:30611
+  endpoint: /oauth2/introspect
+  contenttype: application/x-www-form-urlencoded
+  method: POST
+  validmarker: '"active":true'
+  bodytemplate: "token_type_hint=access_token&token={{.Token}}"
+  cookiename: ["access_token"]
+  queryparamname: ["wasd-access-token"]
+  poolsize: 50
+  pooltimeout: 10s
+
+redis: # Redis
+  dsn: redis://redis:6379
+  minidleconnections: 10
+  maxopenedconnections: 30
+  maxconnectionlifetime: 30s
+  keyprefix: example_
+  cleartime: 60s
+
+proxy:
+  listen: 0.0.0.0:8080
+  hydration:
+    requestid: true
+    introspect: true
+    introspectasbase64: false
+  routes:
+    /api/v1/users:
+      dsn: http://192.168.100.48:30637
+      ttl: 30s
+      tokenlimit:
+        counter: 1000
+        time: 1m
+  services:
+    identity:
+      dsn: http://192.168.100.48:30637
+      ttl: 30s
+      tokenlimit:
+        counter: 1000
+        time: 1m
+      routes:
+        /api/v1/users:

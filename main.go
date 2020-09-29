@@ -1,12 +1,14 @@
 package main
 
 import (
-	"fmt"
 
-	"github.com/soldatov-s/accp/internal/httpsrv"
+	// "net/http"
+	// "net/http/pprof"
+	// _ "net/http/pprof"
+
+	"github.com/soldatov-s/accp/internal/cmd"
 )
 
 func main() {
-	fmt.Println("Load Access Control Caching Proxy")
-	httpsrv.Start()
+	cmd.Execute()
 }
