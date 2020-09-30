@@ -1,32 +1,46 @@
 package memory
 
 import (
-	"encoding"
 	"log"
 	"sync"
 	"time"
+
+	"github.com/rs/zerolog"
+	"github.com/soldatov-s/accp/internal/cache"
+	"github.com/soldatov-s/accp/internal/cache/cachedata"
+	context "github.com/soldatov-s/accp/internal/ctx"
 )
 
+type empty struct{}
+
+type CacheConfig struct {
+	ClearTime time.Duration
+}
+
 type Cache struct {
+	ctx        *context.Context
+	cfg        *CacheConfig
+	log        zerolog.Logger
+	clearTimer *time.Timer
 	sync.Map
 }
 
-// CacheData is a data which putting in cache
-type CacheData interface {
-	encoding.BinaryMarshaler
-	encoding.BinaryUnmarshaler
+func NewCache(ctx *context.Context, cfg *CacheConfig) (*Cache, error) {
+	c := &Cache{ctx: ctx, cfg: cfg}
+
+	c.log = ctx.GetPackageLogger(empty{})
+	c.log.Info().Msg("created inmemory cache")
+
+	if c.cfg.ClearTime > 0 {
+		c.clearTimer = time.AfterFunc(c.cfg.ClearTime, c.ClearCache)
+	}
+
+	return c, nil
 }
 
-// CacheItem is an item of cache
-type CacheItem struct {
-	Data      CacheData
-	TimeStamp time.Time
-	UUID      string
-}
-
-func (c *Cache) Add(key string, data CacheData) error {
+func (c *Cache) Add(key string, data cachedata.CacheData) error {
 	if _, ok := c.Load(key); !ok {
-		c.Store(key, &CacheItem{
+		c.Store(key, &cachedata.CacheItem{
 			Data:      data,
 			TimeStamp: time.Now().UTC(),
 		})
@@ -36,12 +50,39 @@ func (c *Cache) Add(key string, data CacheData) error {
 	return nil
 }
 
-func (c *Cache) Select(key string) (CacheData, error) {
+func (c *Cache) Select(key string) (cachedata.CacheData, error) {
 	if v, ok := c.Load(key); ok {
-		dd := v.(*CacheItem)
+		dd := v.(*cachedata.CacheItem)
 		// log.Printf("select %s from cache", key)
 		return dd.Data, nil
 	}
 
-	return nil, ErrNotFoundInCache
+	return nil, cache.ErrNotFoundInCache
+}
+
+func (c *Cache) Size() int {
+	length := 0
+
+	c.Range(func(_, _ interface{}) bool {
+		length++
+
+		return true
+	})
+
+	c.log.Debug().Msgf("cache size is %d", length)
+
+	return length
+}
+
+func (c *Cache) ClearCache() {
+	timeNow := time.Now().UTC()
+	c.Range(func(k, v interface{}) bool {
+		if timeNow.Sub(v.(*cachedata.CacheItem).TimeStamp) > c.cfg.ClearTime {
+			c.Delete(k)
+			c.log.Debug().Msgf("remove expired from cache: %s", k)
+		}
+		return true
+	})
+
+	c.clearTimer.Reset(c.cfg.ClearTime)
 }

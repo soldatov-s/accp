@@ -17,7 +17,7 @@ type Configuration struct {
 	Logger       *logger.LoggerConfig
 	Proxy        *httpproxy.HTTPProxyConfig
 	Introspector *introspector.IntrospectorConfig
-	Redis        *externalcache.RedisConfig
+	Redis        *externalcache.CacheConfig
 }
 
 func NewConfig(command *cobra.Command) (*Configuration, error) {

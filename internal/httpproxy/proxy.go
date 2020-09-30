@@ -44,9 +44,8 @@ type Service struct {
 type HTTPProxyConfig struct {
 	Listen    string
 	Hydration struct {
-		RequestID          bool
-		Introspect         bool
-		IntrospectAsBase64 bool
+		RequestID  bool
+		Introspect string
 	}
 	Routes   map[string]*Route
 	Services map[string]*Service
@@ -229,11 +228,17 @@ func (p *HTTPProxy) hydrationID(r *http.Request) {
 }
 
 func (p *HTTPProxy) hydrationIntrospect(r *http.Request, content []byte) {
-	if !p.cfg.Hydration.Introspect {
+	var str string
+	switch p.cfg.Hydration.Introspect {
+	case "nothing":
 		return
+	case "plaintext":
+		str = strings.ReplaceAll(strings.ReplaceAll(string(content), "\"", "\\\""), "\n", "")
+	case "base64":
+		str = base64.StdEncoding.EncodeToString(content)
 	}
-	r.Header.Add("accp-introspect-body", strings.ReplaceAll(strings.ReplaceAll(string(content), "\"", "\\\""), "\n", ""))
 
+	r.Header.Add("accp-introspect-body", str)
 	p.log.Debug().Msgf("accp-introspect-body header: %s", r.Header.Get("accp-introspect-body"))
 }
 
