@@ -7,6 +7,30 @@ import (
 	"time"
 )
 
+type PoolConfig struct {
+	// Size - size of pool httpclients for introspection requests
+	Size int
+	// Timeout - timeout of httpclients for introspection requests
+	Timeout time.Duration
+}
+
+func (pc *PoolConfig) Merge(target *PoolConfig) *PoolConfig {
+	result := &PoolConfig{
+		Size:    pc.Size,
+		Timeout: pc.Timeout,
+	}
+
+	if target.Size > 0 {
+		result.Size = target.Size
+	}
+
+	if target.Timeout > 0 {
+		result.Timeout = target.Timeout
+	}
+
+	return result
+}
+
 type Pool struct {
 	muPool       sync.Mutex
 	ch           chan *Client

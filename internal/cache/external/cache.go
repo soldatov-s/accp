@@ -1,4 +1,4 @@
-package externalcache
+package external
 
 import (
 	"time"
@@ -12,7 +12,7 @@ import (
 type empty struct{}
 
 type ExternalStorage interface {
-	Add(key string, data cachedata.CacheData, ttl time.Duration) error
+	Add(key string, value interface{}, ttl time.Duration) error
 	Select(key string, value interface{}) error
 	Expire(key string, ttl time.Duration) error
 }
@@ -26,7 +26,24 @@ type Cache struct {
 
 type CacheConfig struct {
 	KeyPrefix string
-	ClearTime time.Duration
+	TTL       time.Duration
+}
+
+func (cc *CacheConfig) Merge(target *CacheConfig) *CacheConfig {
+	result := &CacheConfig{
+		KeyPrefix: cc.KeyPrefix,
+		TTL:       cc.TTL,
+	}
+
+	if target.KeyPrefix != "" {
+		result.KeyPrefix = target.KeyPrefix
+	}
+
+	if target.TTL > 0 {
+		result.TTL = target.TTL
+	}
+
+	return result
 }
 
 func NewCache(ctx *context.Context, cfg *CacheConfig, externalStorage ExternalStorage) (*Cache, error) {
@@ -39,7 +56,7 @@ func NewCache(ctx *context.Context, cfg *CacheConfig, externalStorage ExternalSt
 }
 
 func (c *Cache) Add(key string, data cachedata.CacheData) error {
-	err := c.externalStorage.Add(c.cfg.KeyPrefix+key, data, c.cfg.ClearTime)
+	err := c.externalStorage.Add(c.cfg.KeyPrefix+key, data, c.cfg.TTL)
 	if err != nil {
 		return err
 	}
@@ -56,7 +73,7 @@ func (c *Cache) Select(key string) (cachedata.CacheData, error) {
 		return nil, cache.ErrNotFoundInCache
 	}
 
-	err = c.externalStorage.Expire(key, c.cfg.ClearTime)
+	err = c.externalStorage.Expire(key, c.cfg.TTL)
 	if err != nil {
 		return nil, cache.ErrNotFoundInCache
 	}

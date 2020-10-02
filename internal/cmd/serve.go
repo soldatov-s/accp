@@ -8,6 +8,7 @@ import (
 	context "github.com/soldatov-s/accp/internal/ctx"
 	"github.com/soldatov-s/accp/internal/httpproxy"
 	"github.com/soldatov-s/accp/internal/introspector"
+	externalcache "github.com/soldatov-s/accp/internal/redis"
 	"github.com/spf13/cobra"
 )
 
@@ -23,7 +24,6 @@ func serveHandler(command *cobra.Command, _ []string) {
 	ctx.FillAppInfo(appName, builded, hash, version, description)
 
 	// Initilize config
-
 	config, err := cfg.NewConfig(command)
 	if err != nil {
 		fmt.Println("failed to load config")
@@ -43,14 +43,25 @@ func serveHandler(command *cobra.Command, _ []string) {
 		log.Fatal().Err(err).Msg("failed to create introspector")
 	}
 
+	// Initilize external storage
+	externalStorage, err := externalcache.NewRedisClient(ctx, config.Redis)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to create external storage")
+	}
+
 	// Initilize proxy
-	proxy := httpproxy.NewHTTPProxy(ctx, config.Proxy, introspector)
+	proxy, err := httpproxy.NewHTTPProxy(ctx, config.Proxy, introspector, externalStorage)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to create proxy")
+	}
 
 	// Start proxy
 	go proxy.Start()
 
 	shutdown := func() {
-		proxy.Shutdown()
+		if err := proxy.Shutdown(); err != nil {
+			log.Fatal().Err(err).Msg("failed to shutdow proxy")
+		}
 	}
 
 	ctx.AppLoop(shutdown)

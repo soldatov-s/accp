@@ -5,10 +5,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	externalcache "github.com/soldatov-s/accp/internal/cache/external"
 	"github.com/soldatov-s/accp/internal/httpproxy"
 	"github.com/soldatov-s/accp/internal/introspector"
 	"github.com/soldatov-s/accp/internal/logger"
+	externalcache "github.com/soldatov-s/accp/internal/redis"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -17,7 +17,7 @@ type Configuration struct {
 	Logger       *logger.LoggerConfig
 	Proxy        *httpproxy.HTTPProxyConfig
 	Introspector *introspector.IntrospectorConfig
-	Redis        *externalcache.CacheConfig
+	Redis        *externalcache.RedisConfig
 }
 
 func NewConfig(command *cobra.Command) (*Configuration, error) {

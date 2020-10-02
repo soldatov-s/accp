@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
+	"github.com/soldatov-s/accp/internal/cache/external"
 	"github.com/soldatov-s/accp/internal/cache/memory"
 	ctxint "github.com/soldatov-s/accp/internal/ctx"
 	"github.com/soldatov-s/accp/internal/httputils"
@@ -21,48 +22,19 @@ import (
 
 type empty struct{}
 
-type Limit struct {
-	Counter int
-	Time    time.Duration
-}
-
-type Base struct {
-	DSN        string
-	TTL        time.Duration
-	Tokenlimit *Limit
-}
-
-type Route struct {
-	Base
-}
-
-type Service struct {
-	Base
-	Routes map[string]*Route
-}
-
-type HTTPProxyConfig struct {
-	Listen    string
-	Hydration struct {
-		RequestID  bool
-		Introspect string
-	}
-	Routes   map[string]*Route
-	Services map[string]*Service
-}
-
 type HTTPProxy struct {
 	cfg            *HTTPProxyConfig
 	ctx            *ctxint.Context
 	log            zerolog.Logger
 	srv            *http.Server
+	routes         map[string]*Route
 	waitAnswerList map[string]chan struct{}
 	waiteAnswerMu  map[string]*sync.Mutex
-	memcache       memory.Cache
+	memCache       memory.Cache
 	introspector   introspector.Introspector
 }
 
-func NewHTTPProxy(ctx *ctxint.Context, cfg *HTTPProxyConfig, i introspector.Introspector) *HTTPProxy {
+func NewHTTPProxy(ctx *ctxint.Context, cfg *HTTPProxyConfig, i introspector.Introspector, externalStorage external.ExternalStorage) (*HTTPProxy, error) {
 	p := &HTTPProxy{
 		ctx:            ctx,
 		cfg:            cfg,
@@ -81,14 +53,99 @@ func NewHTTPProxy(ctx *ctxint.Context, cfg *HTTPProxyConfig, i introspector.Intr
 	p.srv.Handler = http.HandlerFunc(p.proxyHandler)
 
 	p.log = ctx.GetPackageLogger(empty{})
+	p.routes = make(map[string]*Route)
 
-	return p
+	if err := p.fillRoutes(ctx, externalStorage, p.cfg.Routes, p.routes, nil); err != nil {
+		return nil, err
+	}
+	// Fill routes
+	// for k, v := range p.cfg.Routes {
+	// 	routes := p.routes
+	// 	strs := strings.Split(k, "/")
+	// 	for _, s := range strs {
+	// 		if route, ok := routes[s]; !ok {
+	// 			routes[k] = &Route{}
+	// 		} else {
+	// 			routes = route.Routes
+	// 		}
+	// 	}
+	// 	var err error
+	// 	routes[strs[len(strs)-1]].cache.mem, err = memory.NewCache(ctx, v.Parameters.Cache.Memory)
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+
+	// 	routes[strs[len(strs)-1]].cache.external, err = external.NewCache(ctx, v.Parameters.Cache.External, externalStorage)
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+	// }
+
+	return p, nil
+}
+
+func (p *HTTPProxy) fillRoutes(
+	ctx *ctxint.Context,
+	externalStorage external.ExternalStorage,
+	rc map[string]*RouteConfig,
+	r map[string]*Route,
+	parentParameters *RouteParameters,
+) error {
+	for k, v := range rc {
+		routes := r
+		strs := strings.Split(k, "/")
+		for _, s := range strs {
+			if route, ok := routes[s]; !ok {
+				routes[k] = &Route{}
+			} else {
+				routes = route.Routes
+			}
+		}
+
+		parameters := parentParameters
+		if parameters != nil {
+			parameters = parameters.Merge(v.Parameters)
+		} else {
+			parameters = v.Parameters
+		}
+
+		var err error
+		lastPartOfRoute := strs[len(strs)-1]
+		err = routes[lastPartOfRoute].Initilize(ctx, parameters, externalStorage)
+		if err != nil {
+			return err
+		}
+
+		if err := p.fillRoutes(ctx, externalStorage, v.Routes, routes[lastPartOfRoute].Routes, parameters); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (p *HTTPProxy) findRoute(r *http.Request) *Route {
+	strs := strings.Split(r.URL.Path, "/")
+	var (
+		route *Route
+		ok    bool
+	)
+
+	routes := p.routes
+	for _, s := range strs {
+		if route, ok = routes[s]; !ok {
+			return route
+		}
+		routes = route.Routes
+	}
+
+	return route
 }
 
 func (p *HTTPProxy) waitAnswer(w http.ResponseWriter, hk string, ch chan struct{}) {
 	<-ch
 
-	if data, err := p.memcache.Select(hk); err == nil {
+	if data, err := p.memCache.Select(hk); err == nil {
 		if err := data.(*accpmodels.ResponseData).Write(w); err != nil {
 			p.log.Err(err).Msg("failed to write data from cache")
 		}
@@ -101,7 +158,7 @@ func (p *HTTPProxy) waitAnswer(w http.ResponseWriter, hk string, ch chan struct{
 func (p *HTTPProxy) getHandler(w http.ResponseWriter, r *http.Request) {
 	// Finding a response to a request in the memory cache
 	hk := hashKey(r)
-	if data, err := p.memcache.Select(hk); err == nil {
+	if data, err := p.memCache.Select(hk); err == nil {
 		if err := data.(*accpmodels.ResponseData).Write(w); err != nil {
 			p.log.Err(err).Msg("failed to write data from cache")
 		}
@@ -127,7 +184,10 @@ func (p *HTTPProxy) getHandler(w http.ResponseWriter, r *http.Request) {
 			mu.Unlock() // unlock mutex fast as possible
 
 			// Proxy request to backend
-			resp, err := http.DefaultTransport.RoundTrip(r)
+			route := p.findRoute(r)
+			client := route.Pool.GetFromPool()
+
+			resp, err := client.Do(r)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusServiceUnavailable)
 				return
@@ -144,7 +204,7 @@ func (p *HTTPProxy) getHandler(w http.ResponseWriter, r *http.Request) {
 			}
 
 			// Save answer to mem cache
-			if err := p.memcache.Add(hk, responseData); err != nil {
+			if err := p.memCache.Add(hk, responseData); err != nil {
 				p.log.Err(err).Msg("failed to save data memcache")
 			}
 

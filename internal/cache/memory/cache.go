@@ -14,7 +14,19 @@ import (
 type empty struct{}
 
 type CacheConfig struct {
-	ClearTime time.Duration
+	TTL time.Duration
+}
+
+func (cc *CacheConfig) Merge(target *CacheConfig) *CacheConfig {
+	result := &CacheConfig{
+		TTL: cc.TTL,
+	}
+
+	if target.TTL > 0 {
+		result.TTL = target.TTL
+	}
+
+	return result
 }
 
 type Cache struct {
@@ -31,8 +43,8 @@ func NewCache(ctx *context.Context, cfg *CacheConfig) (*Cache, error) {
 	c.log = ctx.GetPackageLogger(empty{})
 	c.log.Info().Msg("created inmemory cache")
 
-	if c.cfg.ClearTime > 0 {
-		c.clearTimer = time.AfterFunc(c.cfg.ClearTime, c.ClearCache)
+	if c.cfg.TTL > 0 {
+		c.clearTimer = time.AfterFunc(c.cfg.TTL, c.ClearCache)
 	}
 
 	return c, nil
@@ -77,12 +89,12 @@ func (c *Cache) Size() int {
 func (c *Cache) ClearCache() {
 	timeNow := time.Now().UTC()
 	c.Range(func(k, v interface{}) bool {
-		if timeNow.Sub(v.(*cachedata.CacheItem).TimeStamp) > c.cfg.ClearTime {
+		if timeNow.Sub(v.(*cachedata.CacheItem).TimeStamp) > c.cfg.TTL {
 			c.Delete(k)
 			c.log.Debug().Msgf("remove expired from cache: %s", k)
 		}
 		return true
 	})
 
-	c.clearTimer.Reset(c.cfg.ClearTime)
+	c.clearTimer.Reset(c.cfg.TTL)
 }
