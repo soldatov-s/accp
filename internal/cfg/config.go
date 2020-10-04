@@ -8,6 +8,7 @@ import (
 	"github.com/soldatov-s/accp/internal/httpproxy"
 	"github.com/soldatov-s/accp/internal/introspector"
 	"github.com/soldatov-s/accp/internal/logger"
+	"github.com/soldatov-s/accp/internal/rabbitmq"
 	externalcache "github.com/soldatov-s/accp/internal/redis"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -18,6 +19,7 @@ type Configuration struct {
 	Proxy        *httpproxy.HTTPProxyConfig
 	Introspector *introspector.IntrospectorConfig
 	Redis        *externalcache.RedisConfig
+	Rabbitmq     *rabbitmq.PublisherConfig
 }
 
 func NewConfig(command *cobra.Command) (*Configuration, error) {
@@ -61,6 +63,10 @@ func (cfg *Configuration) initialize(command *cobra.Command) error {
 	}
 
 	if err := viper.UnmarshalKey("redis", &cfg.Redis); err != nil {
+		return err
+	}
+
+	if err := viper.UnmarshalKey("rabbitmq", &cfg.Rabbitmq); err != nil {
 		return err
 	}
 

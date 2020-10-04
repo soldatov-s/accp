@@ -4,10 +4,13 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/soldatov-s/accp/internal/cache/external"
 	"github.com/soldatov-s/accp/internal/cfg"
 	context "github.com/soldatov-s/accp/internal/ctx"
 	"github.com/soldatov-s/accp/internal/httpproxy"
 	"github.com/soldatov-s/accp/internal/introspector"
+	"github.com/soldatov-s/accp/internal/publisher"
+	"github.com/soldatov-s/accp/internal/rabbitmq"
 	externalcache "github.com/soldatov-s/accp/internal/redis"
 	"github.com/spf13/cobra"
 )
@@ -44,13 +47,25 @@ func serveHandler(command *cobra.Command, _ []string) {
 	}
 
 	// Initilize external storage
-	externalStorage, err := externalcache.NewRedisClient(ctx, config.Redis)
-	if err != nil {
-		log.Fatal().Err(err).Msg("failed to create external storage")
+	var externalStorage external.ExternalStorage
+	if config.Redis != nil {
+		externalStorage, err = externalcache.NewRedisClient(ctx, config.Redis)
+		if err != nil {
+			log.Fatal().Err(err).Msg("failed to create external storage")
+		}
+	}
+
+	// Initilize publisher
+	var publisher publisher.Publisher
+	if config.Rabbitmq != nil {
+		publisher, err = rabbitmq.NewPublisher(ctx, config.Rabbitmq)
+		if err != nil {
+			log.Fatal().Err(err).Msg("failed to create publisher")
+		}
 	}
 
 	// Initilize proxy
-	proxy, err := httpproxy.NewHTTPProxy(ctx, config.Proxy, introspector, externalStorage)
+	proxy, err := httpproxy.NewHTTPProxy(ctx, config.Proxy, introspector, externalStorage, publisher)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to create proxy")
 	}

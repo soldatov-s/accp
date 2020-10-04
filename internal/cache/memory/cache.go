@@ -1,13 +1,12 @@
 package memory
 
 import (
-	"log"
 	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
-	"github.com/soldatov-s/accp/internal/cache"
 	"github.com/soldatov-s/accp/internal/cache/cachedata"
+	"github.com/soldatov-s/accp/internal/cache/cacheerrs"
 	context "github.com/soldatov-s/accp/internal/ctx"
 )
 
@@ -20,6 +19,10 @@ type CacheConfig struct {
 func (cc *CacheConfig) Merge(target *CacheConfig) *CacheConfig {
 	result := &CacheConfig{
 		TTL: cc.TTL,
+	}
+
+	if target == nil {
+		return result
 	}
 
 	if target.TTL > 0 {
@@ -57,7 +60,7 @@ func (c *Cache) Add(key string, data cachedata.CacheData) error {
 			TimeStamp: time.Now().UTC(),
 		})
 
-		log.Printf("add key %s to cache", key)
+		c.log.Debug().Msgf("add key %s to cache", key)
 	}
 	return nil
 }
@@ -65,11 +68,11 @@ func (c *Cache) Add(key string, data cachedata.CacheData) error {
 func (c *Cache) Select(key string) (cachedata.CacheData, error) {
 	if v, ok := c.Load(key); ok {
 		dd := v.(*cachedata.CacheItem)
-		// log.Printf("select %s from cache", key)
+		c.log.Debug().Msgf("select %s from cache", key)
 		return dd.Data, nil
 	}
 
-	return nil, cache.ErrNotFoundInCache
+	return nil, cacheerrs.ErrNotFoundInCache
 }
 
 func (c *Cache) Size() int {

@@ -15,5 +15,4 @@ type CacheData interface {
 type CacheItem struct {
 	Data      CacheData
 	TimeStamp time.Time
-	UUID      string
 }

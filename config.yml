@@ -17,9 +17,14 @@ introspector:
 
 redis: # Redis
   dsn: redis://redis:6379
-  minidleconnections: 10`
+  minidleconnections: 10
   maxopenedconnections: 30
   maxconnectionlifetime: 30s
+
+rabbitmq:
+  dsn: amqp://guest:guest@rabbitmq:5672
+  backoffpolicy: [2s, 5s, 10s, 15s, 20s, 25s]
+  exchangename: testout.events.dev
 
 proxy:
   listen: 0.0.0.0:8080
@@ -29,10 +34,12 @@ proxy:
   routes:
     /api/v1/:
       parameters:
+        introspect: true
         dsn: http://192.168.100.48:30637
         pool:
           size: 20
           timeout: 10s
+        routkey: V1
       routes:
         # subroutes
         users:
@@ -64,6 +71,7 @@ proxy:
         pool:
           size: 20
           timeout: 10s
+        routkey: USERS
         limits:
           token:
             counter: 1000
@@ -82,3 +90,5 @@ proxy:
         cache:
           memoryttl: 30s
           externalttl: 60s
+  excluded:
+    /api/v2/:

@@ -4,8 +4,8 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-	"github.com/soldatov-s/accp/internal/cache"
 	"github.com/soldatov-s/accp/internal/cache/cachedata"
+	"github.com/soldatov-s/accp/internal/cache/cacheerrs"
 	context "github.com/soldatov-s/accp/internal/ctx"
 )
 
@@ -15,6 +15,7 @@ type ExternalStorage interface {
 	Add(key string, value interface{}, ttl time.Duration) error
 	Select(key string, value interface{}) error
 	Expire(key string, ttl time.Duration) error
+	Update(key string, value interface{}, ttl time.Duration) error
 }
 
 type Cache struct {
@@ -35,6 +36,10 @@ func (cc *CacheConfig) Merge(target *CacheConfig) *CacheConfig {
 		TTL:       cc.TTL,
 	}
 
+	if target == nil {
+		return result
+	}
+
 	if target.KeyPrefix != "" {
 		result.KeyPrefix = target.KeyPrefix
 	}
@@ -47,6 +52,10 @@ func (cc *CacheConfig) Merge(target *CacheConfig) *CacheConfig {
 }
 
 func NewCache(ctx *context.Context, cfg *CacheConfig, externalStorage ExternalStorage) (*Cache, error) {
+	if externalStorage == nil {
+		return nil, nil
+	}
+
 	c := &Cache{ctx: ctx, cfg: cfg, externalStorage: externalStorage}
 
 	c.log = ctx.GetPackageLogger(empty{})
@@ -70,15 +79,26 @@ func (c *Cache) Select(key string) (cachedata.CacheData, error) {
 	var data cachedata.CacheItem
 	err := c.externalStorage.Select(c.cfg.KeyPrefix+key, &data)
 	if err != nil {
-		return nil, cache.ErrNotFoundInCache
+		return nil, cacheerrs.ErrNotFoundInCache
 	}
 
 	err = c.externalStorage.Expire(key, c.cfg.TTL)
 	if err != nil {
-		return nil, cache.ErrNotFoundInCache
+		return nil, cacheerrs.ErrNotFoundInCache
 	}
 
 	c.log.Debug().Msgf("select %s from cache", key)
 
 	return data.Data, nil
+}
+
+func (c *Cache) Update(key string, data cachedata.CacheData) error {
+	err := c.externalStorage.Update(key, data, c.cfg.TTL)
+	if err != nil {
+		return err
+	}
+
+	c.log.Debug().Msgf("update key %s in cache", key)
+
+	return nil
 }

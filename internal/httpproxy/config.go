@@ -19,6 +19,10 @@ func (cc *CacheConfig) Merge(target *CacheConfig) *CacheConfig {
 		External: cc.External,
 	}
 
+	if target == nil {
+		return result
+	}
+
 	if target.Memory != nil {
 		result.Memory = cc.Memory.Merge(target.Memory)
 	}
@@ -32,19 +36,23 @@ func (cc *CacheConfig) Merge(target *CacheConfig) *CacheConfig {
 
 type RefreshConfig struct {
 	// Conter
-	Counter int
+	Count int
 	// Time
 	Time time.Duration
 }
 
 func (rc *RefreshConfig) Merge(target *RefreshConfig) *RefreshConfig {
 	result := &RefreshConfig{
-		Counter: rc.Counter,
-		Time:    rc.Time,
+		Count: rc.Count,
+		Time:  rc.Time,
 	}
 
-	if target.Counter > 0 {
-		result.Counter = target.Counter
+	if target == nil {
+		return result
+	}
+
+	if target.Count > 0 {
+		result.Count = target.Count
 	}
 
 	if target.Time > 0 {
@@ -74,6 +82,10 @@ func (lc *LimitConfig) Merge(target *LimitConfig) *LimitConfig {
 		Time:    lc.Time,
 	}
 
+	if target == nil {
+		return result
+	}
+
 	if target.Header != "" {
 		result.Header = target.Header
 	}
@@ -94,22 +106,30 @@ func (lc *LimitConfig) Merge(target *LimitConfig) *LimitConfig {
 }
 
 type RouteParameters struct {
-	DSN     string
-	TTL     time.Duration
-	Limits  map[string]*LimitConfig
-	Refresh *RefreshConfig
-	Cache   *CacheConfig
-	Pool    *httpclient.PoolConfig
+	DSN             string
+	TTL             time.Duration
+	Limits          map[string]*LimitConfig
+	Refresh         *RefreshConfig
+	Cache           *CacheConfig
+	Pool            *httpclient.PoolConfig
+	PublishKeyRoute string
+	// Introspect if true it means that necessary to introspect request
+	Introspect bool
 }
 
 func (rp *RouteParameters) Merge(target *RouteParameters) *RouteParameters {
 	result := &RouteParameters{
-		DSN:     rp.DSN,
-		TTL:     rp.TTL,
-		Cache:   rp.Cache,
-		Refresh: rp.Refresh,
-		Pool:    rp.Pool,
-		Limits:  rp.Limits,
+		DSN:             rp.DSN,
+		TTL:             rp.TTL,
+		Cache:           rp.Cache,
+		Refresh:         rp.Refresh,
+		Pool:            rp.Pool,
+		Limits:          rp.Limits,
+		PublishKeyRoute: rp.PublishKeyRoute,
+	}
+
+	if target == nil {
+		return result
 	}
 
 	if target.DSN != "" {
@@ -147,6 +167,10 @@ func (rp *RouteParameters) Merge(target *RouteParameters) *RouteParameters {
 		}
 	}
 
+	if target.PublishKeyRoute != "" {
+		result.PublishKeyRoute = target.PublishKeyRoute
+	}
+
 	return result
 }
 
@@ -161,5 +185,6 @@ type HTTPProxyConfig struct {
 		RequestID  bool
 		Introspect string
 	}
-	Routes map[string]*RouteConfig
+	Routes   map[string]*RouteConfig
+	Excluded map[string]*RouteConfig
 }

@@ -5,35 +5,43 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"sync"
 
 	"github.com/soldatov-s/accp/internal/httputils"
 )
 
-type ResponseData struct {
+type Response struct {
+	readMu     sync.RWMutex
 	Body       string
 	Header     http.Header
 	StatusCode int
 }
 
-func (r *ResponseData) MarshalBinary() (data []byte, err error) {
+func (r *Response) MarshalBinary() (data []byte, err error) {
 	return json.Marshal(r)
 }
 
-func (r *ResponseData) UnmarshalBinary(data []byte) error {
+func (r *Response) UnmarshalBinary(data []byte) error {
 	return json.Unmarshal(data, r)
 }
 
-func (r *ResponseData) Write(w http.ResponseWriter) error {
+func (r *Response) Write(w http.ResponseWriter) error {
+	r.readMu.RLock()
+	defer r.readMu.RUnlock()
+
 	httputils.CopyHeader(w.Header(), r.Header)
 	w.WriteHeader(r.StatusCode)
 	_, err := w.Write([]byte(r.Body))
 	return err
 }
 
-func (r *ResponseData) Read(resp *http.Response) error {
+func (r *Response) Read(resp *http.Response) error {
 	if r == nil {
-		r = &ResponseData{}
+		r = &Response{}
 	}
+
+	r.readMu.Lock()
+	defer r.readMu.Unlock()
 
 	buf := new(bytes.Buffer)
 	_, err := io.Copy(buf, resp.Body)

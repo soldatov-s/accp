@@ -19,6 +19,7 @@ type RedisConfig struct {
 
 type RedisClient struct {
 	*redis.Client
+	ctx *context.Context
 	log zerolog.Logger
 }
 
@@ -39,6 +40,7 @@ func NewRedisClient(ctx *context.Context, cfg *RedisConfig) (*RedisClient, error
 		return nil, err
 	}
 
+	r.ctx = ctx
 	r.log = ctx.GetPackageLogger(empty{})
 
 	r.log.Info().Msg("Redis connection established")
@@ -80,6 +82,19 @@ func (r *RedisClient) Expire(key string, ttl time.Duration) error {
 	if err != nil {
 		return err
 	}
+
+	r.log.Debug().Msgf("expire %s in cache", key)
+
+	return nil
+}
+
+func (r *RedisClient) Update(key string, value interface{}, ttl time.Duration) error {
+	_, err := r.Set(key, value, ttl).Result()
+	if err != nil {
+		return err
+	}
+
+	r.log.Debug().Msgf("update key %s in cache", key)
 
 	return nil
 }

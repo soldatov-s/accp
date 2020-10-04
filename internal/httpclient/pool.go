@@ -20,6 +20,10 @@ func (pc *PoolConfig) Merge(target *PoolConfig) *PoolConfig {
 		Timeout: pc.Timeout,
 	}
 
+	if target == nil {
+		return result
+	}
+
 	if target.Size > 0 {
 		result.Size = target.Size
 	}
