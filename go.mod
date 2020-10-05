@@ -3,6 +3,7 @@ module github.com/soldatov-s/accp
 go 1.15
 
 require (
+	github.com/KromDaniel/rejonson v0.0.0
 	github.com/go-redis/redis v6.15.9+incompatible
 	github.com/google/uuid v1.1.2
 	github.com/prometheus/client_golang v0.9.3

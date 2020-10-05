@@ -64,14 +64,14 @@ func (rc *RefreshConfig) Merge(target *RefreshConfig) *RefreshConfig {
 
 type LimitConfig struct {
 	// Header is name of header in request for limit
-	Header string
+	Header []string
 	// Cookie is name of cookie in request for limit
-	Cookie string
+	Cookie []string
 	// Limit Count per Time period
 	// Conter limits count of request to API
 	Counter int
-	// Time limits period of requests to API
-	Time time.Duration
+	// PT limits period of requests to API
+	PT time.Duration
 }
 
 func (lc *LimitConfig) Merge(target *LimitConfig) *LimitConfig {
@@ -79,27 +79,27 @@ func (lc *LimitConfig) Merge(target *LimitConfig) *LimitConfig {
 		Header:  lc.Header,
 		Cookie:  lc.Cookie,
 		Counter: lc.Counter,
-		Time:    lc.Time,
+		PT:      lc.PT,
 	}
 
 	if target == nil {
 		return result
 	}
 
-	if target.Header != "" {
-		result.Header = target.Header
+	if len(target.Header) > 0 {
+		result.Header = append(result.Header, target.Header...)
 	}
 
-	if target.Cookie != "" {
-		result.Cookie = target.Cookie
+	if len(target.Cookie) > 0 {
+		result.Cookie = append(result.Cookie, target.Cookie...)
 	}
 
 	if target.Counter > 0 {
 		result.Counter = target.Counter
 	}
 
-	if target.Time > 0 {
-		result.Time = target.Time
+	if target.PT > 0 {
+		result.PT = target.PT
 	}
 
 	return result

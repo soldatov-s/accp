@@ -47,15 +47,15 @@ proxy:
             limits:
               token:
                 counter: 1000
-                time: 1m
+                pt: 1m
               ip:
                 counter: 1000
-                time: 1m
+                pt: 1m
               deviceid:
-                header: device-id
-                cookie: device-id
+                header: [device-id]
+                cookie: [device-id]
                 counter: 1000
-                time: 1m
+                pt: 1m
             refresh:
               count: 100
               time: 2m
@@ -75,15 +75,15 @@ proxy:
         limits:
           token:
             counter: 1000
-            time: 1m
+            pt: 1m
           ip:
             counter: 1000
-            time: 1m
+            pt: 1m
           deviceid:
             header: device-id
             cookie: device-id
             counter: 1000
-            time: 1m
+            pt: 1m
         refresh:
           count: 100
           time: 2m

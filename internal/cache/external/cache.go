@@ -16,6 +16,9 @@ type ExternalStorage interface {
 	Select(key string, value interface{}) error
 	Expire(key string, ttl time.Duration) error
 	Update(key string, value interface{}, ttl time.Duration) error
+	JSONGet(key, path string, value interface{}) error
+	JSONSet(key, path, json string) error
+	JSONSetNX(key, path, json string) error
 }
 
 type Cache struct {
@@ -82,7 +85,7 @@ func (c *Cache) Select(key string) (cachedata.CacheData, error) {
 		return nil, cacheerrs.ErrNotFoundInCache
 	}
 
-	err = c.externalStorage.Expire(key, c.cfg.TTL)
+	err = c.externalStorage.Expire(c.cfg.KeyPrefix+key, c.cfg.TTL)
 	if err != nil {
 		return nil, cacheerrs.ErrNotFoundInCache
 	}
@@ -93,12 +96,45 @@ func (c *Cache) Select(key string) (cachedata.CacheData, error) {
 }
 
 func (c *Cache) Update(key string, data cachedata.CacheData) error {
-	err := c.externalStorage.Update(key, data, c.cfg.TTL)
+	err := c.externalStorage.Update(c.cfg.KeyPrefix+key, data, c.cfg.TTL)
 	if err != nil {
 		return err
 	}
 
 	c.log.Debug().Msgf("update key %s in cache", key)
+
+	return nil
+}
+
+func (c *Cache) JSONGet(key, path string, value interface{}) error {
+	err := c.externalStorage.JSONGet(c.cfg.KeyPrefix+key, path, value)
+	if err != nil {
+		return err
+	}
+
+	c.log.Debug().Msgf("jsonget %s:%s from cache", key, path)
+
+	return nil
+}
+
+func (c *Cache) JSONSet(key, path string, json string) error {
+	err := c.externalStorage.JSONSet(c.cfg.KeyPrefix+key, path, json)
+	if err != nil {
+		return err
+	}
+
+	c.log.Debug().Msgf("jsonset %s:%s to cache", key, path)
+
+	return nil
+}
+
+func (c *Cache) JSONSetNX(key, path string, json string) error {
+	err := c.externalStorage.JSONSetNX(c.cfg.KeyPrefix+key, path, json)
+	if err != nil {
+		return err
+	}
+
+	c.log.Debug().Msgf("jsonset %s:%s to cache", key, path)
 
 	return nil
 }

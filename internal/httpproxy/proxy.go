@@ -59,7 +59,7 @@ func NewHTTPProxy(
 	p.log = ctx.GetPackageLogger(empty{})
 	p.routes = make(map[string]*Route)
 
-	if err := p.fillRoutes(ctx, externalStorage, publisher, p.cfg.Routes, p.routes, nil); err != nil {
+	if err := p.fillRoutes(ctx, externalStorage, publisher, p.cfg.Routes, p.routes, nil, ""); err != nil {
 		return nil, err
 	}
 
@@ -77,6 +77,7 @@ func (p *HTTPProxy) fillRoutes(
 	rc map[string]*RouteConfig,
 	r map[string]*Route,
 	parentParameters *RouteParameters,
+	parentRoute string,
 ) error {
 	for k, v := range rc {
 		routes := r
@@ -97,11 +98,11 @@ func (p *HTTPProxy) fillRoutes(
 		}
 
 		lastPartOfRoute := strs[len(strs)-1]
-		if err := routes[lastPartOfRoute].Initilize(ctx, parameters, externalStorage, publisher); err != nil {
+		if err := routes[lastPartOfRoute].Initilize(ctx, parentRoute+"/"+k, parameters, externalStorage, publisher); err != nil {
 			return err
 		}
 
-		if err := p.fillRoutes(ctx, externalStorage, publisher, v.Routes, routes[lastPartOfRoute].Routes, parameters); err != nil {
+		if err := p.fillRoutes(ctx, externalStorage, publisher, v.Routes, routes[lastPartOfRoute].Routes, parameters, parentRoute+"/"+k); err != nil {
 			return err
 		}
 	}
@@ -194,6 +195,39 @@ func (p *HTTPProxy) waitAnswer(w http.ResponseWriter, r *http.Request, hk string
 			p.log.Err(err).Msg("failed to publish data")
 		}
 
+		// Check that we have refresh limit by request count
+		if rrdata.Refresh.MaxCount == 0 {
+			return
+		}
+
+		go func() {
+			rrdata.Refresh.Mu.Lock()
+			defer rrdata.Refresh.Mu.Unlock()
+
+			if err := rrdata.LoadRefreshCounter(hk, route.Cache.External); err != nil {
+				p.log.Err(err).Msg("failed to get refresh-counter from external cache")
+			}
+
+			rrdata.Refresh.Counter++
+
+			if rrdata.Refresh.Counter < rrdata.Refresh.MaxCount {
+				if err := rrdata.UpdateRefreshCounter(hk, route.Cache.External); err != nil {
+					p.log.Err(err).Msg("failed to update refresh counter")
+				}
+				return
+			}
+
+			client := route.Pool.GetFromPool()
+			if err := rrdata.Update(client); err != nil {
+				p.log.Err(err).Msg("failed to update RRdata")
+			}
+
+			rrdata.Refresh.Counter = 0
+			if err := rrdata.UpdateRefreshCounter(hk, route.Cache.External); err != nil {
+				p.log.Err(err).Msg("failed to update refresh counter")
+			}
+		}()
+
 		return
 	}
 
@@ -226,21 +260,29 @@ func (p *HTTPProxy) getHandler(route *Route, w http.ResponseWriter, r *http.Requ
 			p.log.Err(err).Msg("failed to write data from cache")
 		}
 
+		if err := route.Publish(rrdata.Request); err != nil {
+			p.log.Err(err).Msg("failed to publish data")
+		}
+
 		// Check that we have refresh limit by request count
 		if rrdata.Refresh.MaxCount == 0 {
 			return
 		}
 
-		if err := route.Publish(rrdata.Request); err != nil {
-			p.log.Err(err).Msg("failed to publish data")
-		}
-
 		go func() {
 			rrdata.Refresh.Mu.Lock()
 			defer rrdata.Refresh.Mu.Unlock()
+
+			if err := rrdata.LoadRefreshCounter(hk, route.Cache.External); err != nil {
+				p.log.Err(err).Msg("failed to get refresh-counter from external cache")
+			}
+
 			rrdata.Refresh.Counter++
 
 			if rrdata.Refresh.Counter < rrdata.Refresh.MaxCount {
+				if err := rrdata.UpdateRefreshCounter(hk, route.Cache.External); err != nil {
+					p.log.Err(err).Msg("failed to update refresh counter")
+				}
 				return
 			}
 
@@ -250,6 +292,9 @@ func (p *HTTPProxy) getHandler(route *Route, w http.ResponseWriter, r *http.Requ
 			}
 
 			rrdata.Refresh.Counter = 0
+			if err := rrdata.UpdateRefreshCounter(hk, route.Cache.External); err != nil {
+				p.log.Err(err).Msg("failed to update refresh counter")
+			}
 		}()
 	}
 
@@ -287,6 +332,7 @@ func (p *HTTPProxy) getHandler(route *Route, w http.ResponseWriter, r *http.Requ
 			}
 
 			rrData.Refresh.MaxCount = route.parameters.Refresh.Count
+
 			if err := rrData.Response.Read(resp); err != nil {
 				p.log.Err(err).Msg("failed to read data from response")
 			}
@@ -373,6 +419,17 @@ func (p *HTTPProxy) proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		p.hydrationIntrospect(r, introspectBody)
+	}
+
+	// Check limits
+	if res, err := route.CheckLimits(r); err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	} else {
+		if !*res {
+			http.Error(w, "limit reached", http.StatusTooManyRequests)
+			return
+		}
 	}
 
 	switch r.Method {

@@ -1,3 +1,6 @@
+# github.com/KromDaniel/rejonson v0.0.0
+## explicit
+github.com/KromDaniel/rejonson
 # github.com/beorn7/perks v1.0.0
 github.com/beorn7/perks/quantile
 # github.com/fsnotify/fsnotify v1.4.7
