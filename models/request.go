@@ -2,6 +2,7 @@ package models
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -15,7 +16,15 @@ type Request struct {
 	Method string
 	Body   string
 	Header http.Header
-	mu     sync.Mutex
+	mu     sync.RWMutex
+}
+
+func (r *Request) MarshalBinary() (data []byte, err error) {
+	return json.Marshal(r)
+}
+
+func (r *Request) UnmarshalBinary(data []byte) error {
+	return json.Unmarshal(data, r)
 }
 
 func (r *Request) Read(req *http.Request) error {
@@ -45,5 +54,9 @@ func (r *Request) BuildRequest() (*http.Request, error) {
 	if r == nil {
 		return nil, errors.New("empty request")
 	}
+
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	return http.NewRequest(r.Method, r.URL, bytes.NewBufferString(r.Body))
 }

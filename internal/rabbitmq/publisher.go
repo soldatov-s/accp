@@ -106,11 +106,11 @@ func (p *Publish) publishStatus() {
 }
 
 func (p *Publish) Shutdown() error {
-	p.weAreShuttingDown = true
-
 	if p == nil || p.Conn == nil {
 		return nil
 	}
+
+	p.weAreShuttingDown = true
 
 	p.log.Info().Msg("Closing queue publisher connection...")
 

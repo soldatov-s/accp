@@ -20,7 +20,7 @@ const (
 
 type empty struct{}
 
-type IntrospectorConfig struct {
+type Config struct {
 	// DSN is DSN your authorization service for introspection
 	DSN string
 	// Endpoint is intropsection endpoint on introspection service
@@ -49,14 +49,14 @@ type Introspector interface {
 
 type Introspect struct {
 	ctx      *context.Context
-	cfg      *IntrospectorConfig
+	cfg      *Config
 	log      zerolog.Logger
 	bodyTmpl *template.Template
 	pool     *httpclient.Pool
 }
 
 // NewIntrospector creates Intrcopector
-func NewIntrospector(ctx *context.Context, cfg *IntrospectorConfig) (*Introspect, error) {
+func NewIntrospector(ctx *context.Context, cfg *Config) (*Introspect, error) {
 	i := &Introspect{ctx: ctx, cfg: cfg}
 
 	i.pool = httpclient.NewPool(i.cfg.PoolSize, i.cfg.PoolTimeout)

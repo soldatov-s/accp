@@ -11,6 +11,8 @@ import (
 	"sync"
 	"time"
 
+	"net/http/pprof"
+
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog"
@@ -24,8 +26,18 @@ import (
 
 type empty struct{}
 
+type Config struct {
+	Listen    string
+	Hydration struct {
+		RequestID  bool
+		Introspect string
+	}
+	Routes   map[string]*RouteConfig
+	Excluded map[string]*RouteConfig
+}
+
 type HTTPProxy struct {
-	cfg          *HTTPProxyConfig
+	cfg          *Config
 	ctx          *ctxint.Context
 	log          zerolog.Logger
 	srv          *http.Server
@@ -36,9 +48,9 @@ type HTTPProxy struct {
 
 func NewHTTPProxy(
 	ctx *ctxint.Context,
-	cfg *HTTPProxyConfig,
+	cfg *Config,
 	i introspector.Introspector,
-	externalStorage external.ExternalStorage,
+	externalStorage external.Storage,
 	publisher publisher.Publisher,
 ) (*HTTPProxy, error) {
 	p := &HTTPProxy{
@@ -72,7 +84,7 @@ func NewHTTPProxy(
 
 func (p *HTTPProxy) fillRoutes(
 	ctx *ctxint.Context,
-	externalStorage external.ExternalStorage,
+	externalStorage external.Storage,
 	publisher publisher.Publisher,
 	rc map[string]*RouteConfig,
 	r map[string]*Route,
@@ -102,7 +114,15 @@ func (p *HTTPProxy) fillRoutes(
 			return err
 		}
 
-		if err := p.fillRoutes(ctx, externalStorage, publisher, v.Routes, routes[lastPartOfRoute].Routes, parameters, parentRoute+"/"+k); err != nil {
+		if err := p.fillRoutes(
+			ctx,
+			externalStorage,
+			publisher,
+			v.Routes,
+			routes[lastPartOfRoute].Routes,
+			parameters,
+			parentRoute+"/"+k,
+		); err != nil {
 			return err
 		}
 	}
@@ -379,8 +399,9 @@ func (p *HTTPProxy) defaultHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *HTTPProxy) proxyHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method == "GET" {
-		if r.URL.Path == "/health/alive" {
+	if r.Method == http.MethodGet {
+		switch r.URL.Path {
+		case "/health/alive":
 			w.WriteHeader(http.StatusOK)
 			w.Header().Add("Content-Type", "application/json")
 			_, err := w.Write([]byte("{\"result\":\"ok\"}"))
@@ -388,9 +409,24 @@ func (p *HTTPProxy) proxyHandler(w http.ResponseWriter, r *http.Request) {
 				p.log.Err(err).Msg("failed write body")
 			}
 			return
-		}
-		if r.URL.Path == "/metrics" {
+		case "/metrics":
 			promhttp.Handler().ServeHTTP(w, r)
+			return
+			// TODO: enable pprof via config
+		case "/debug/pprof/":
+			pprof.Index(w, r)
+			return
+		case "/debug/pprof/cmdline":
+			pprof.Cmdline(w, r)
+			return
+		case "/debug/pprof/profile":
+			pprof.Profile(w, r)
+			return
+		case "/debug/pprof/symbol":
+			pprof.Symbol(w, r)
+			return
+		case "/debug/pprof/trace":
+			pprof.Trace(w, r)
 			return
 		}
 	}
@@ -425,15 +461,13 @@ func (p *HTTPProxy) proxyHandler(w http.ResponseWriter, r *http.Request) {
 	if res, err := route.CheckLimits(r); err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
-	} else {
-		if !*res {
-			http.Error(w, "limit reached", http.StatusTooManyRequests)
-			return
-		}
+	} else if !*res {
+		http.Error(w, "limit reached", http.StatusTooManyRequests)
+		return
 	}
 
 	switch r.Method {
-	case "GET":
+	case http.MethodGet:
 		p.getHandler(route, w, r)
 	default:
 		p.defaultHandler(w, r)

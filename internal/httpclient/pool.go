@@ -3,7 +3,6 @@ package httpclient
 import (
 	"net"
 	"net/http"
-	"sync"
 	"time"
 )
 
@@ -36,7 +35,6 @@ func (pc *PoolConfig) Merge(target *PoolConfig) *PoolConfig {
 }
 
 type Pool struct {
-	muPool       sync.Mutex
 	ch           chan *Client
 	netTransport *http.Transport
 }
@@ -71,8 +69,6 @@ func NewPool(size int, timeout time.Duration) *Pool {
 }
 
 func (p *Pool) GetFromPool() *Client {
-	p.muPool.Lock()
-	defer p.muPool.Unlock()
 	return <-p.ch
 }
 

@@ -13,7 +13,7 @@ const (
 	defaultClientTimeout = 60 * time.Second
 )
 
-func NewPoolClient(timeout time.Duration, netTransport *http.Transport) *Client {
+func NewPoolClient(timeout time.Duration, netTransport http.RoundTripper) *Client {
 	clientTimeout := defaultClientTimeout
 	if timeout > 0 {
 		clientTimeout = timeout

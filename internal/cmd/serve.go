@@ -47,7 +47,7 @@ func serveHandler(command *cobra.Command, _ []string) {
 	}
 
 	// Initilize external storage
-	var externalStorage external.ExternalStorage
+	var externalStorage external.Storage
 	if config.Redis != nil {
 		externalStorage, err = externalcache.NewRedisClient(ctx, config.Redis)
 		if err != nil {
@@ -80,15 +80,4 @@ func serveHandler(command *cobra.Command, _ []string) {
 	}
 
 	ctx.AppLoop(shutdown)
-
-	// r := http.NewServeMux()
-
-	// // Register pprof handlers
-	// r.HandleFunc("/debug/pprof/", pprof.Index)
-	// r.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
-	// r.HandleFunc("/debug/pprof/profile", pprof.Profile)
-	// r.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
-	// r.HandleFunc("/debug/pprof/trace", pprof.Trace)
-
-	// go http.ListenAndServe(":8090", r)
 }

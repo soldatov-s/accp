@@ -11,7 +11,7 @@ import (
 
 type empty struct{}
 
-type ExternalStorage interface {
+type Storage interface {
 	Add(key string, value interface{}, ttl time.Duration) error
 	Select(key string, value interface{}) error
 	Expire(key string, ttl time.Duration) error
@@ -25,7 +25,7 @@ type Cache struct {
 	ctx             *context.Context
 	cfg             *CacheConfig
 	log             zerolog.Logger
-	externalStorage ExternalStorage
+	externalStorage Storage
 }
 
 type CacheConfig struct {
@@ -54,7 +54,7 @@ func (cc *CacheConfig) Merge(target *CacheConfig) *CacheConfig {
 	return result
 }
 
-func NewCache(ctx *context.Context, cfg *CacheConfig, externalStorage ExternalStorage) (*Cache, error) {
+func NewCache(ctx *context.Context, cfg *CacheConfig, externalStorage Storage) (*Cache, error) {
 	if externalStorage == nil {
 		return nil, nil
 	}
@@ -117,7 +117,7 @@ func (c *Cache) JSONGet(key, path string, value interface{}) error {
 	return nil
 }
 
-func (c *Cache) JSONSet(key, path string, json string) error {
+func (c *Cache) JSONSet(key, path, json string) error {
 	err := c.externalStorage.JSONSet(c.cfg.KeyPrefix+key, path, json)
 	if err != nil {
 		return err
@@ -128,7 +128,7 @@ func (c *Cache) JSONSet(key, path string, json string) error {
 	return nil
 }
 
-func (c *Cache) JSONSetNX(key, path string, json string) error {
+func (c *Cache) JSONSetNX(key, path, json string) error {
 	err := c.externalStorage.JSONSetNX(c.cfg.KeyPrefix+key, path, json)
 	if err != nil {
 		return err

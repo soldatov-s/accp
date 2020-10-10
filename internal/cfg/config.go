@@ -15,9 +15,9 @@ import (
 )
 
 type Configuration struct {
-	Logger       *logger.LoggerConfig
-	Proxy        *httpproxy.HTTPProxyConfig
-	Introspector *introspector.IntrospectorConfig
+	Logger       *logger.Config
+	Proxy        *httpproxy.Config
+	Introspector *introspector.Config
 	Redis        *externalcache.RedisConfig
 	Rabbitmq     *rabbitmq.PublisherConfig
 }

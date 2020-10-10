@@ -24,7 +24,7 @@ func NewContext() *Context {
 	return &Context{}
 }
 
-func (c *Context) InitilizeLogger(cfg *logger.LoggerConfig) {
+func (c *Context) InitilizeLogger(cfg *logger.Config) {
 	c.Logger = logger.NewLogger(cfg)
 }
 

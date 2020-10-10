@@ -24,8 +24,8 @@ const (
 	LoggerLevelDisabled = "DISABLED"
 )
 
-// Logger represents logger's configuration.
-type LoggerConfig struct {
+// Config represents logger's configuration.
+type Config struct {
 	// NoColoredOutput forces logger to output things without
 	// shell colorcodes.
 	NoColoredOutput bool
@@ -110,7 +110,7 @@ func (l *Logger) GetLogger(name string, fields []*Field) zerolog.Logger {
 	return loggerCtx.Logger()
 }
 
-func NewLogger(cfg *LoggerConfig) *Logger {
+func NewLogger(cfg *Config) *Logger {
 	l := &Logger{}
 
 	// Initialize logger

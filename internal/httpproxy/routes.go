@@ -1,7 +1,6 @@
 package httpproxy
 
 import (
-	"encoding/json"
 	"net/http"
 	"sync"
 	"time"
@@ -17,80 +16,106 @@ import (
 	accpmodels "github.com/soldatov-s/accp/models"
 )
 
-type LimitMarshal struct {
-	Counter    int
-	LastAccess int64 // Unix time
+type RefreshConfig struct {
+	// Conter
+	Count int
+	// Time
+	Time time.Duration
 }
 
-type Limit struct {
-	Mu         sync.Mutex
-	Counter    int
-	LastAccess int64 // Unix time
+func (rc *RefreshConfig) Merge(target *RefreshConfig) *RefreshConfig {
+	result := &RefreshConfig{
+		Count: rc.Count,
+		Time:  rc.Time,
+	}
+
+	if target == nil {
+		return result
+	}
+
+	if target.Count > 0 {
+		result.Count = target.Count
+	}
+
+	if target.Time > 0 {
+		result.Time = target.Time
+	}
+
+	return result
 }
 
-type LimitTable map[interface{}]*Limit
+type RouteParameters struct {
+	DSN             string
+	TTL             time.Duration
+	Limits          map[string]*LimitConfig
+	Refresh         *RefreshConfig
+	Cache           *cache.Config
+	Pool            *httpclient.PoolConfig
+	PublishKeyRoute string
+	// Introspect if true it means that necessary to introspect request
+	Introspect bool
+}
 
-func (l *Limit) LoadLimit(name, key string, externalStorage *external.Cache) error {
-	if externalStorage != nil {
-		if err := externalStorage.JSONGet(key, name+".counter", &l.Counter); err != nil {
-			return err
+func (rp *RouteParameters) Merge(target *RouteParameters) *RouteParameters {
+	result := &RouteParameters{
+		DSN:             rp.DSN,
+		TTL:             rp.TTL,
+		Cache:           rp.Cache,
+		Refresh:         rp.Refresh,
+		Pool:            rp.Pool,
+		Limits:          rp.Limits,
+		PublishKeyRoute: rp.PublishKeyRoute,
+	}
+
+	if target == nil {
+		return result
+	}
+
+	if target.DSN != "" {
+		result.DSN = target.DSN
+	}
+
+	if target.TTL > 0 {
+		result.TTL = target.TTL
+	}
+
+	if target.Cache != nil {
+		result.Cache = rp.Cache.Merge(target.Cache)
+	}
+
+	if target.Refresh != nil {
+		result.Refresh = rp.Refresh.Merge(target.Refresh)
+	}
+
+	if target.Pool != nil {
+		result.Pool = rp.Pool.Merge(target.Pool)
+	}
+
+	if target.Limits != nil {
+		result.Limits = make(map[string]*LimitConfig)
+		for k, v := range rp.Limits {
+			result.Limits[k] = v
 		}
-		if err := externalStorage.JSONGet(key, name+".lastaccess", &l.LastAccess); err != nil {
-			return err
+
+		for k, v := range target.Limits {
+			if limit, ok := result.Limits[k]; !ok {
+				result.Limits[k] = v
+			} else {
+				result.Limits[k] = limit.Merge(v)
+			}
 		}
 	}
 
-	return nil
-}
-
-func (l *Limit) UpdateLimit(route, key string, externalStorage *external.Cache) error {
-	if externalStorage != nil {
-		data, err := json.Marshal(&l.Counter)
-		if err != nil {
-			return err
-		}
-
-		if err := externalStorage.JSONSet(route, key+".counter", string(data)); err != nil {
-			return err
-		}
-
-		data, err = json.Marshal(&l.Counter)
-		if err != nil {
-			return err
-		}
-
-		if err := externalStorage.JSONSet(route, key+".lastaccess", string(data)); err != nil {
-			return err
-		}
-
+	if target.PublishKeyRoute != "" {
+		result.PublishKeyRoute = target.PublishKeyRoute
 	}
 
-	return nil
+	return result
 }
 
-func (l *Limit) CreateLimit(route, key string, externalStorage *external.Cache) error {
-	if externalStorage != nil {
-		data, err := json.Marshal(&l.Counter)
-		if err != nil {
-			return err
-		}
-
-		if err := externalStorage.JSONSetNX(route, key+".counter", string(data)); err != nil {
-			return err
-		}
-
-		data, err = json.Marshal(&l.Counter)
-		if err != nil {
-			return err
-		}
-
-		if err := externalStorage.JSONSetNX(route, key+".lastaccess", string(data)); err != nil {
-			return err
-		}
-
-	}
-
-	return nil
+type RouteConfig struct {
+	Parameters *RouteParameters
+	Routes     map[string]*RouteConfig
 }
 
 type Route struct {
@@ -109,7 +134,7 @@ type Route struct {
 	Route          string
 }
 
-func (r *Route) Initilize(ctx *context.Context, route string, parameters *RouteParameters, externalStorage external.ExternalStorage, publisher publisher.Publisher) error {
+func (r *Route) Initilize(ctx *context.Context, route string, parameters *RouteParameters, externalStorage external.Storage, publisher publisher.Publisher) error {
 	var err error
 	r.ctx = ctx
 	r.log = ctx.GetPackageLogger(empty{})
@@ -144,7 +169,6 @@ func (r *Route) Initilize(ctx *context.Context, route string, parameters *RouteP
 	r.Limits = make(map[string]LimitTable)
 	for k := range r.parameters.Limits {
 		r.Limits[k] = make(LimitTable)
-
 	}
 
 	r.Route = route
@@ -243,6 +267,7 @@ func (r *Route) RefreshHandler() {
 	r.RefreshTimer.Reset(r.parameters.Refresh.Time)
 }
 
+// Publish publishes request from client to message queue
 func (r *Route) Publish(message interface{}) error {
 	return r.Publisher.SendMessage(message, r.parameters.PublishKeyRoute)
 }
