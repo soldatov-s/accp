@@ -13,7 +13,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
-	"github.com/soldatov-s/accp/internal/cache/cachedata"
 	"github.com/soldatov-s/accp/internal/cache/external"
 	ctxint "github.com/soldatov-s/accp/internal/ctx"
 	"github.com/soldatov-s/accp/internal/httputils"
@@ -189,6 +188,11 @@ func (p *HTTPProxy) findExcludedRoute(r *http.Request) *Route {
 }
 
 func (p *HTTPProxy) refresh(rrdata *accpmodels.RRData, hk string, route *Route) {
+	// Check that we have refresh limit by request count
+	if rrdata.Refresh.MaxCount == 0 {
+		return
+	}
+
 	rrdata.Refresh.Mu.Lock()
 	defer rrdata.Refresh.Mu.Unlock()
 
@@ -216,22 +220,10 @@ func (p *HTTPProxy) refresh(rrdata *accpmodels.RRData, hk string, route *Route) 
 	}
 }
 
-func (p *HTTPProxy) waitAnswer(w http.ResponseWriter, r *http.Request, hk string, ch chan struct{}, route *Route) {
-	<-ch
-
-	var (
-		data cachedata.CacheData
-		err  error
-	)
-
-	if data, err = route.Cache.Select(hk); err != nil {
-		http.Error(w, "failed to get data from cache", http.StatusServiceUnavailable)
-		return
-	}
-
+func (p *HTTPProxy) responseHandle(data interface{}, w http.ResponseWriter, r *http.Request, hk string, route *Route) {
 	rrdata, ok := data.(*accpmodels.RRData)
 	if !ok {
-		p.log.Err(err).Msg("failed to convert data from cache to RRData")
+		p.log.Error().Msg("failed to convert data from cache to RRData")
 		return
 	}
 
@@ -250,12 +242,18 @@ func (p *HTTPProxy) waitAnswer(w http.ResponseWriter, r *http.Request, hk string
 		p.log.Err(err).Msg("failed to publish data")
 	}
 
-	// Check that we have refresh limit by request count
-	if rrdata.Refresh.MaxCount == 0 {
+	go p.refresh(rrdata, hk, route)
+}
+
+func (p *HTTPProxy) waitAnswer(w http.ResponseWriter, r *http.Request, hk string, ch chan struct{}, route *Route) {
+	<-ch
+
+	if data, err := route.Cache.Select(hk); err == nil {
+		p.responseHandle(data, w, r, hk, route)
 		return
 	}
 
-	go p.refresh(rrdata, hk, route)
+	http.Error(w, "failed to get data from cache", http.StatusServiceUnavailable)
 }
 
 func (p *HTTPProxy) getHandler(route *Route, w http.ResponseWriter, r *http.Request) {
@@ -267,33 +265,8 @@ func (p *HTTPProxy) getHandler(route *Route, w http.ResponseWriter, r *http.Requ
 
 	// Finding a response to a request in the memory cache
 	if data, err := route.Cache.Select(hk); err == nil {
-		rrdata, ok := data.(*accpmodels.RRData)
-		if !ok {
-			p.log.Err(err).Msg("failed to convert data from cache to RRData")
-			return
-		}
-
-		// If get rrdata from redis, request will be empty
-		if rrdata.Request == nil {
-			if err := rrdata.Request.Read(r); err != nil {
-				p.log.Err(err).Msg("failed to read data from request")
-			}
-		}
-
-		if err := rrdata.Response.Write(w); err != nil {
-			p.log.Err(err).Msg("failed to write data from cache")
-		}
-
-		if err := route.Publish(rrdata.Request); err != nil {
-			p.log.Err(err).Msg("failed to publish data")
-		}
-
-		// Check that we have refresh limit by request count
-		if rrdata.Refresh.MaxCount == 0 {
-			return
-		}
-
-		go p.refresh(rrdata, hk, route)
+		p.responseHandle(data, w, r, hk, route)
+		return
 	}
 
 	// Check that we not started to handle the request
