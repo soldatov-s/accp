@@ -134,7 +134,13 @@ type Route struct {
 	Route          string
 }
 
-func (r *Route) Initilize(ctx *context.Context, route string, parameters *RouteParameters, externalStorage external.Storage, publisher publisher.Publisher) error {
+func (r *Route) Initilize(
+	ctx *context.Context,
+	route string,
+	parameters *RouteParameters,
+	externalStorage external.Storage,
+	pub publisher.Publisher,
+) error {
 	var err error
 	r.ctx = ctx
 	r.log = ctx.GetPackageLogger(empty{})
@@ -152,7 +158,7 @@ func (r *Route) Initilize(ctx *context.Context, route string, parameters *RouteP
 		return err
 	}
 
-	r.Publisher = publisher
+	r.Publisher = pub
 
 	r.Pool = httpclient.NewPool(parameters.Pool.Size, parameters.Pool.Timeout)
 

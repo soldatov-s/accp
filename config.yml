@@ -26,8 +26,12 @@ rabbitmq:
   backoffpolicy: [2s, 5s, 10s, 15s, 20s, 25s]
   exchangename: testout.events.dev
 
+admin:
+  listen: 0.0.0.0:9100
+  pprof: true
+
 proxy:
-  listen: 0.0.0.0:8080
+  listen: 0.0.0.0:9000
   hydration:
     requestid: true
     introspect: plaintext

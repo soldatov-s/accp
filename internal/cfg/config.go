@@ -5,8 +5,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/soldatov-s/accp/internal/admin"
 	"github.com/soldatov-s/accp/internal/httpproxy"
-	"github.com/soldatov-s/accp/internal/introspector"
+	"github.com/soldatov-s/accp/internal/introspection"
 	"github.com/soldatov-s/accp/internal/logger"
 	"github.com/soldatov-s/accp/internal/rabbitmq"
 	externalcache "github.com/soldatov-s/accp/internal/redis"
@@ -16,8 +17,9 @@ import (
 
 type Configuration struct {
 	Logger       *logger.Config
+	Admin        *admin.Config
 	Proxy        *httpproxy.Config
-	Introspector *introspector.Config
+	Introspector *introspection.Config
 	Redis        *externalcache.RedisConfig
 	Rabbitmq     *rabbitmq.PublisherConfig
 }
@@ -51,6 +53,10 @@ func (cfg *Configuration) initialize(command *cobra.Command) error {
 	}
 
 	if err := viper.UnmarshalKey("logger", &cfg.Logger); err != nil {
+		return err
+	}
+
+	if err := viper.UnmarshalKey("admin", &cfg.Admin); err != nil {
 		return err
 	}
 

@@ -4,11 +4,12 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/soldatov-s/accp/internal/admin"
 	"github.com/soldatov-s/accp/internal/cache/external"
 	"github.com/soldatov-s/accp/internal/cfg"
 	context "github.com/soldatov-s/accp/internal/ctx"
 	"github.com/soldatov-s/accp/internal/httpproxy"
-	"github.com/soldatov-s/accp/internal/introspector"
+	"github.com/soldatov-s/accp/internal/introspection"
 	"github.com/soldatov-s/accp/internal/publisher"
 	"github.com/soldatov-s/accp/internal/rabbitmq"
 	externalcache "github.com/soldatov-s/accp/internal/redis"
@@ -41,7 +42,7 @@ func serveHandler(command *cobra.Command, _ []string) {
 	log.Info().Msg(ctx.AppInfo.Description)
 
 	// Initilize introspector
-	introspector, err := introspector.NewIntrospector(ctx, config.Introspector)
+	introspector, err := introspection.NewIntrospector(ctx, config.Introspector)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to create introspector")
 	}
@@ -55,27 +56,40 @@ func serveHandler(command *cobra.Command, _ []string) {
 		}
 	}
 
-	// Initilize publisher
-	var publisher publisher.Publisher
+	// Initilize pub
+	var pub publisher.Publisher
 	if config.Rabbitmq != nil {
-		publisher, err = rabbitmq.NewPublisher(ctx, config.Rabbitmq)
+		pub, err = rabbitmq.NewPublisher(ctx, config.Rabbitmq)
 		if err != nil {
 			log.Fatal().Err(err).Msg("failed to create publisher")
 		}
 	}
 
 	// Initilize proxy
-	proxy, err := httpproxy.NewHTTPProxy(ctx, config.Proxy, introspector, externalStorage, publisher)
+	proxy, err := httpproxy.NewHTTPProxy(ctx, config.Proxy, introspector, externalStorage, pub)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to create proxy")
+	}
+
+	// Initilize admin
+	adminsrv, err := admin.NewAdmin(ctx, config.Admin)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to create admin")
 	}
 
 	// Start proxy
 	go proxy.Start()
 
+	// Start admin
+	go adminsrv.Start()
+
 	shutdown := func() {
 		if err := proxy.Shutdown(); err != nil {
 			log.Fatal().Err(err).Msg("failed to shutdow proxy")
+		}
+
+		if err := adminsrv.Shutdown(); err != nil {
+			log.Fatal().Err(err).Msg("failed to shutdow admin")
 		}
 	}
 

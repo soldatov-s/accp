@@ -1,4 +1,4 @@
-package introspector
+package introspection
 
 import (
 	"errors"

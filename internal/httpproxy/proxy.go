@@ -11,15 +11,13 @@ import (
 	"sync"
 	"time"
 
-	"net/http/pprof"
-
 	"github.com/google/uuid"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog"
+	"github.com/soldatov-s/accp/internal/cache/cachedata"
 	"github.com/soldatov-s/accp/internal/cache/external"
 	ctxint "github.com/soldatov-s/accp/internal/ctx"
 	"github.com/soldatov-s/accp/internal/httputils"
-	"github.com/soldatov-s/accp/internal/introspector"
+	"github.com/soldatov-s/accp/internal/introspection"
 	"github.com/soldatov-s/accp/internal/publisher"
 	accpmodels "github.com/soldatov-s/accp/models"
 )
@@ -43,15 +41,15 @@ type HTTPProxy struct {
 	srv          *http.Server
 	routes       map[string]*Route
 	excluded     map[string]*Route
-	introspector introspector.Introspector
+	introspector introspection.Introspector
 }
 
 func NewHTTPProxy(
 	ctx *ctxint.Context,
 	cfg *Config,
-	i introspector.Introspector,
+	i introspection.Introspector,
 	externalStorage external.Storage,
-	publisher publisher.Publisher,
+	pub publisher.Publisher,
 ) (*HTTPProxy, error) {
 	p := &HTTPProxy{
 		ctx:          ctx,
@@ -71,7 +69,7 @@ func NewHTTPProxy(
 	p.log = ctx.GetPackageLogger(empty{})
 	p.routes = make(map[string]*Route)
 
-	if err := p.fillRoutes(ctx, externalStorage, publisher, p.cfg.Routes, p.routes, nil, ""); err != nil {
+	if err := p.fillRoutes(ctx, externalStorage, pub, p.cfg.Routes, p.routes, nil, ""); err != nil {
 		return nil, err
 	}
 
@@ -85,7 +83,7 @@ func NewHTTPProxy(
 func (p *HTTPProxy) fillRoutes(
 	ctx *ctxint.Context,
 	externalStorage external.Storage,
-	publisher publisher.Publisher,
+	pub publisher.Publisher,
 	rc map[string]*RouteConfig,
 	r map[string]*Route,
 	parentParameters *RouteParameters,
@@ -110,14 +108,14 @@ func (p *HTTPProxy) fillRoutes(
 		}
 
 		lastPartOfRoute := strs[len(strs)-1]
-		if err := routes[lastPartOfRoute].Initilize(ctx, parentRoute+"/"+k, parameters, externalStorage, publisher); err != nil {
+		if err := routes[lastPartOfRoute].Initilize(ctx, parentRoute+"/"+k, parameters, externalStorage, pub); err != nil {
 			return err
 		}
 
 		if err := p.fillRoutes(
 			ctx,
 			externalStorage,
-			publisher,
+			pub,
 			v.Routes,
 			routes[lastPartOfRoute].Routes,
 			parameters,
@@ -190,68 +188,74 @@ func (p *HTTPProxy) findExcludedRoute(r *http.Request) *Route {
 	return route
 }
 
-func (p *HTTPProxy) waitAnswer(w http.ResponseWriter, r *http.Request, hk string, ch chan struct{}, route *Route) {
-	<-ch
+func (p *HTTPProxy) refresh(rrdata *accpmodels.RRData, hk string, route *Route) {
+	rrdata.Refresh.Mu.Lock()
+	defer rrdata.Refresh.Mu.Unlock()
 
-	if data, err := route.Cache.Select(hk); err == nil {
-		rrdata, ok := data.(*accpmodels.RRData)
-		if !ok {
-			p.log.Err(err).Msg("failed to convert data from cache to RRData")
-			return
+	if err := rrdata.LoadRefreshCounter(hk, route.Cache.External); err != nil {
+		p.log.Err(err).Msg("failed to get refresh-counter from external cache")
+	}
+
+	rrdata.Refresh.Counter++
+
+	if rrdata.Refresh.Counter < rrdata.Refresh.MaxCount {
+		if err := rrdata.UpdateRefreshCounter(hk, route.Cache.External); err != nil {
+			p.log.Err(err).Msg("failed to update refresh counter")
 		}
-
-		// If get rrdata from redis, request will be empty
-		if rrdata.Request == nil {
-			if err := rrdata.Request.Read(r); err != nil {
-				p.log.Err(err).Msg("failed to read data from request")
-			}
-		}
-
-		if err := rrdata.Response.Write(w); err != nil {
-			p.log.Err(err).Msg("failed to write data from cache")
-		}
-
-		if err := route.Publish(rrdata.Request); err != nil {
-			p.log.Err(err).Msg("failed to publish data")
-		}
-
-		// Check that we have refresh limit by request count
-		if rrdata.Refresh.MaxCount == 0 {
-			return
-		}
-
-		go func() {
-			rrdata.Refresh.Mu.Lock()
-			defer rrdata.Refresh.Mu.Unlock()
-
-			if err := rrdata.LoadRefreshCounter(hk, route.Cache.External); err != nil {
-				p.log.Err(err).Msg("failed to get refresh-counter from external cache")
-			}
-
-			rrdata.Refresh.Counter++
-
-			if rrdata.Refresh.Counter < rrdata.Refresh.MaxCount {
-				if err := rrdata.UpdateRefreshCounter(hk, route.Cache.External); err != nil {
-					p.log.Err(err).Msg("failed to update refresh counter")
-				}
-				return
-			}
-
-			client := route.Pool.GetFromPool()
-			if err := rrdata.Update(client); err != nil {
-				p.log.Err(err).Msg("failed to update RRdata")
-			}
-
-			rrdata.Refresh.Counter = 0
-			if err := rrdata.UpdateRefreshCounter(hk, route.Cache.External); err != nil {
-				p.log.Err(err).Msg("failed to update refresh counter")
-			}
-		}()
-
 		return
 	}
 
-	http.Error(w, "failed to get data from cache", http.StatusServiceUnavailable)
+	client := route.Pool.GetFromPool()
+	if err := rrdata.Update(client); err != nil {
+		p.log.Err(err).Msg("failed to update RRdata")
+	}
+
+	rrdata.Refresh.Counter = 0
+	if err := rrdata.UpdateRefreshCounter(hk, route.Cache.External); err != nil {
+		p.log.Err(err).Msg("failed to update refresh counter")
+	}
+}
+
+func (p *HTTPProxy) waitAnswer(w http.ResponseWriter, r *http.Request, hk string, ch chan struct{}, route *Route) {
+	<-ch
+
+	var (
+		data cachedata.CacheData
+		err  error
+	)
+
+	if data, err = route.Cache.Select(hk); err != nil {
+		http.Error(w, "failed to get data from cache", http.StatusServiceUnavailable)
+		return
+	}
+
+	rrdata, ok := data.(*accpmodels.RRData)
+	if !ok {
+		p.log.Err(err).Msg("failed to convert data from cache to RRData")
+		return
+	}
+
+	// If get rrdata from redis, request will be empty
+	if rrdata.Request == nil {
+		if err := rrdata.Request.Read(r); err != nil {
+			p.log.Err(err).Msg("failed to read data from request")
+		}
+	}
+
+	if err := rrdata.Response.Write(w); err != nil {
+		p.log.Err(err).Msg("failed to write data from cache")
+	}
+
+	if err := route.Publish(rrdata.Request); err != nil {
+		p.log.Err(err).Msg("failed to publish data")
+	}
+
+	// Check that we have refresh limit by request count
+	if rrdata.Refresh.MaxCount == 0 {
+		return
+	}
+
+	go p.refresh(rrdata, hk, route)
 }
 
 func (p *HTTPProxy) getHandler(route *Route, w http.ResponseWriter, r *http.Request) {
@@ -289,33 +293,7 @@ func (p *HTTPProxy) getHandler(route *Route, w http.ResponseWriter, r *http.Requ
 			return
 		}
 
-		go func() {
-			rrdata.Refresh.Mu.Lock()
-			defer rrdata.Refresh.Mu.Unlock()
-
-			if err := rrdata.LoadRefreshCounter(hk, route.Cache.External); err != nil {
-				p.log.Err(err).Msg("failed to get refresh-counter from external cache")
-			}
-
-			rrdata.Refresh.Counter++
-
-			if rrdata.Refresh.Counter < rrdata.Refresh.MaxCount {
-				if err := rrdata.UpdateRefreshCounter(hk, route.Cache.External); err != nil {
-					p.log.Err(err).Msg("failed to update refresh counter")
-				}
-				return
-			}
-
-			client := route.Pool.GetFromPool()
-			if err := rrdata.Update(client); err != nil {
-				p.log.Err(err).Msg("failed to update RRdata")
-			}
-
-			rrdata.Refresh.Counter = 0
-			if err := rrdata.UpdateRefreshCounter(hk, route.Cache.External); err != nil {
-				p.log.Err(err).Msg("failed to update refresh counter")
-			}
-		}()
+		go p.refresh(rrdata, hk, route)
 	}
 
 	// Check that we not started to handle the request
@@ -399,38 +377,6 @@ func (p *HTTPProxy) defaultHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *HTTPProxy) proxyHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodGet {
-		switch r.URL.Path {
-		case "/health/alive":
-			w.WriteHeader(http.StatusOK)
-			w.Header().Add("Content-Type", "application/json")
-			_, err := w.Write([]byte("{\"result\":\"ok\"}"))
-			if err != nil {
-				p.log.Err(err).Msg("failed write body")
-			}
-			return
-		case "/metrics":
-			promhttp.Handler().ServeHTTP(w, r)
-			return
-			// TODO: enable pprof via config
-		case "/debug/pprof/":
-			pprof.Index(w, r)
-			return
-		case "/debug/pprof/cmdline":
-			pprof.Cmdline(w, r)
-			return
-		case "/debug/pprof/profile":
-			pprof.Profile(w, r)
-			return
-		case "/debug/pprof/symbol":
-			pprof.Symbol(w, r)
-			return
-		case "/debug/pprof/trace":
-			pprof.Trace(w, r)
-			return
-		}
-	}
-
 	// Handle excluded routes
 	route := p.findExcludedRoute(r)
 	if route != nil {
@@ -446,7 +392,7 @@ func (p *HTTPProxy) proxyHandler(w http.ResponseWriter, r *http.Request) {
 	// The check an authorization token
 	if p.introspector != nil && route.Introspect {
 		introspectBody, err := p.introspector.IntrospectRequest(r)
-		if _, ok := err.(*introspector.ErrTokenInactive); ok {
+		if _, ok := err.(*introspection.ErrTokenInactive); ok {
 			http.Error(w, err.Error(), http.StatusUnauthorized)
 			return
 		} else if err != nil {

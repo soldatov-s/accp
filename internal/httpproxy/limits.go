@@ -72,22 +72,34 @@ func (l *Limit) LoadLimit(name, key string, externalStorage *external.Cache) err
 	return nil
 }
 
+func (l *Limit) marshal() (counterData, lastAccessData []byte, err error) {
+	if counterData, err = json.Marshal(&l.Counter); err != nil {
+		return nil, nil, err
+	}
+
+	if lastAccessData, err = json.Marshal(&l.LastAccess); err != nil {
+		return nil, nil, err
+	}
+
+	return
+}
+
 func (l *Limit) UpdateLimit(route, key string, externalStorage *external.Cache) error {
-	if externalStorage != nil {
-		if data, err := json.Marshal(&l.Counter); err != nil {
-			return err
-		} else if err := externalStorage.JSONSet(route, key+".counter", string(data)); err != nil {
-			return err
-		}
+	if externalStorage == nil {
+		return nil
+	}
 
-		data, err := json.Marshal(&l.Counter)
-		if err != nil {
-			return err
-		}
+	counterData, lastAccessData, err := l.marshal()
+	if err != nil {
+		return err
+	}
 
-		if err := externalStorage.JSONSet(route, key+".lastaccess", string(data)); err != nil {
-			return err
-		}
+	if err := externalStorage.JSONSet(route, key+".counter", string(counterData)); err != nil {
+		return err
+	}
+
+	if err := externalStorage.JSONSet(route, key+".lastaccess", string(lastAccessData)); err != nil {
+		return err
 	}
 
 	return nil
@@ -95,20 +107,20 @@ func (l *Limit) UpdateLimit(route, key string, externalStorage *external.Cache) 
 
 func (l *Limit) CreateLimit(route, key string, externalStorage *external.Cache) error {
 	if externalStorage != nil {
-		if data, err := json.Marshal(&l.Counter); err != nil {
-			return err
-		} else if err := externalStorage.JSONSetNX(route, key+".counter", string(data)); err != nil {
-			return err
-		}
+		return nil
+	}
 
-		data, err := json.Marshal(&l.Counter)
-		if err != nil {
-			return err
-		}
+	counterData, lastAccessData, err := l.marshal()
+	if err != nil {
+		return err
+	}
 
-		if err := externalStorage.JSONSetNX(route, key+".lastaccess", string(data)); err != nil {
-			return err
-		}
+	if err := externalStorage.JSONSetNX(route, key+".counter", string(counterData)); err != nil {
+		return err
+	}
+
+	if err := externalStorage.JSONSetNX(route, key+".lastaccess", string(lastAccessData)); err != nil {
+		return err
 	}
 
 	return nil
