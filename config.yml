@@ -34,7 +34,7 @@ proxy:
   listen: 0.0.0.0:9000
   hydration:
     requestid: true
-    introspect: plaintext
+    introspect: plaintext # add result of introspection as plaintext in header
   routes:
     /api/v1/:
       parameters:
@@ -43,7 +43,7 @@ proxy:
         pool:
           size: 20
           timeout: 10s
-        routkey: V1
+        routkey: V1 # rabbitmq rouykey
       routes:
         # subroutes
         users:
@@ -59,7 +59,7 @@ proxy:
                 header: [device-id]
                 cookie: [device-id]
                 counter: 1000
-                pt: 1m
+                pt: 1m # cache auto update period
             refresh:
               count: 100
               time: 2m
