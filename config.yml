@@ -10,8 +10,8 @@ introspector:
   method: POST
   validmarker: '"active":true'
   bodytemplate: "token_type_hint=access_token&token={{.Token}}"
-  cookiename: ["access_token"]
-  queryparamname: ["wasd-access-token"]
+  cookiename: ["access-token"]
+  queryparamname: ["access_token"]
   poolsize: 50
   pooltimeout: 10s
 
