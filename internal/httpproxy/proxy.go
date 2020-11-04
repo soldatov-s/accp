@@ -91,6 +91,7 @@ func (p *HTTPProxy) fillRoutes(
 ) error {
 	for k, v := range rc {
 		p.log.Debug().Msgf("parse route \"%s\"", k)
+		var lastRoute map[string]*Route
 		routes := r
 		strs := strings.Split(k, "/")
 		// For example:
@@ -109,6 +110,8 @@ func (p *HTTPProxy) fillRoutes(
 				routes[s] = &Route{
 					Routes: make(map[string]*Route),
 				}
+				lastRoute = routes
+				routes = routes[s].Routes
 			} else {
 				routes = route.Routes
 			}
@@ -128,9 +131,15 @@ func (p *HTTPProxy) fillRoutes(
 		if lastPartOfRoute == "" {
 			lastPartOfRoute = strs[len(strs)-2]
 		}
+
 		p.log.Debug().Msgf("last part of route \"%s\" is \"%s\"", k, lastPartOfRoute)
-		if err := routes[lastPartOfRoute].Initilize(ctx, parentRoute+"/"+k, parameters, externalStorage, pub); err != nil {
+
+		if err := lastRoute[lastPartOfRoute].Initilize(ctx, parentRoute+"/"+k, parameters, externalStorage, pub); err != nil {
 			return err
+		}
+
+		if v == nil {
+			return nil
 		}
 
 		if err := p.fillRoutes(
@@ -138,7 +147,7 @@ func (p *HTTPProxy) fillRoutes(
 			externalStorage,
 			pub,
 			v.Routes,
-			routes[lastPartOfRoute].Routes,
+			lastRoute[lastPartOfRoute].Routes,
 			parameters,
 			parentRoute+"/"+k,
 		); err != nil {
@@ -154,16 +163,22 @@ func (p *HTTPProxy) fillExcludedRoutes(
 	r map[string]*Route,
 ) error {
 	for k, v := range rc {
+		p.log.Debug().Msgf("parse excluded route \"%s\"", k)
+		var lastRoute map[string]*Route
 		routes := r
 		strs := strings.Split(k, "/")
 		for _, s := range strs {
 			if s == "" {
 				continue
 			}
+			p.log.Debug().Msgf("parse path item \"%s\"", s)
 			if route, ok := routes[s]; !ok {
-				routes[k] = &Route{
+				p.log.Debug().Msgf("create excluded route node \"%s\"", s)
+				routes[s] = &Route{
 					Routes: make(map[string]*Route),
 				}
+				lastRoute = routes
+				routes = routes[s].Routes
 			} else {
 				routes = route.Routes
 			}
@@ -173,7 +188,13 @@ func (p *HTTPProxy) fillExcludedRoutes(
 		if lastPartOfRoute == "" {
 			lastPartOfRoute = strs[len(strs)-2]
 		}
-		if err := p.fillExcludedRoutes(v.Routes, routes[lastPartOfRoute].Routes); err != nil {
+
+		p.log.Debug().Msgf("last part of excluded route \"%s\" is \"%s\"", k, lastPartOfRoute)
+		if v == nil {
+			return nil
+		}
+
+		if err := p.fillExcludedRoutes(v.Routes, lastRoute[lastPartOfRoute].Routes); err != nil {
 			return err
 		}
 	}
@@ -181,7 +202,7 @@ func (p *HTTPProxy) fillExcludedRoutes(
 	return nil
 }
 
-func (p *HTTPProxy) findRoute(r *http.Request) *Route {
+func (p *HTTPProxy) FindRoute(r *http.Request) *Route {
 	strs := strings.Split(r.URL.Path, "/")
 	var (
 		route *Route
@@ -193,7 +214,9 @@ func (p *HTTPProxy) findRoute(r *http.Request) *Route {
 		if s == "" {
 			continue
 		}
+		p.log.Debug().Msgf("search path item \"%s\"", s)
 		if route, ok = routes[s]; !ok {
+			p.log.Debug().Msgf("search path item \"%s\"", s)
 			return route
 		}
 		routes = route.Routes
@@ -202,7 +225,7 @@ func (p *HTTPProxy) findRoute(r *http.Request) *Route {
 	return route
 }
 
-func (p *HTTPProxy) findExcludedRoute(r *http.Request) *Route {
+func (p *HTTPProxy) FindExcludedRoute(r *http.Request) *Route {
 	strs := strings.Split(r.URL.Path, "/")
 	var (
 		route *Route
@@ -384,13 +407,13 @@ func (p *HTTPProxy) defaultHandler(w http.ResponseWriter, r *http.Request) {
 
 func (p *HTTPProxy) proxyHandler(w http.ResponseWriter, r *http.Request) {
 	// Handle excluded routes
-	route := p.findExcludedRoute(r)
+	route := p.FindExcludedRoute(r)
 	if route != nil {
 		p.defaultHandler(w, r)
 		return
 	}
 
-	route = p.findRoute(r)
+	route = p.FindRoute(r)
 
 	// Adding to request header the requestID
 	p.hydrationID(r)

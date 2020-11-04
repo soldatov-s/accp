@@ -2,6 +2,7 @@ package httpproxy
 
 import (
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -114,10 +115,15 @@ func (rp *RouteParameters) Merge(target *RouteParameters) *RouteParameters {
 		Pool:            rp.Pool,
 		Limits:          rp.Limits,
 		PublishKeyRoute: rp.PublishKeyRoute,
+		Introspect:      rp.Introspect,
 	}
 
 	if target == nil {
 		return result
+	}
+
+	if target.Introspect {
+		result.Introspect = true
 	}
 
 	if target.DSN != "" {
@@ -226,7 +232,7 @@ func (r *Route) Initilize(
 		r.Limits[k] = make(LimitTable)
 	}
 
-	r.Route = route
+	r.Route = strings.ReplaceAll(route, "//", "/")
 
 	return nil
 }
