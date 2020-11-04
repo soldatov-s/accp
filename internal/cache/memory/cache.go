@@ -12,8 +12,20 @@ import (
 
 type empty struct{}
 
+const (
+	defaultTTL = 10 * time.Second
+)
+
 type CacheConfig struct {
 	TTL time.Duration
+}
+
+func (cc *CacheConfig) Initilize() error {
+	if cc.TTL == 0 {
+		cc.TTL = defaultTTL
+	}
+
+	return nil
 }
 
 func (cc *CacheConfig) Merge(target *CacheConfig) *CacheConfig {

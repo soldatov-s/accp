@@ -16,11 +16,28 @@ import (
 	accpmodels "github.com/soldatov-s/accp/models"
 )
 
+const (
+	defaultCount = 100
+	defaultTime  = 10 * time.Second
+)
+
 type RefreshConfig struct {
 	// Conter
 	Count int
 	// Time
 	Time time.Duration
+}
+
+func (rc *RefreshConfig) Initilize() error {
+	if rc.Count == 0 {
+		rc.Count = defaultCount
+	}
+
+	if rc.Time == 0 {
+		rc.Time = defaultTime
+	}
+
+	return nil
 }
 
 func (rc *RefreshConfig) Merge(target *RefreshConfig) *RefreshConfig {
@@ -54,6 +71,38 @@ type RouteParameters struct {
 	PublishKeyRoute string
 	// Introspect if true it means that necessary to introspect request
 	Introspect bool
+}
+
+func (rp *RouteParameters) Initilize() error {
+	if rp.Cache == nil {
+		rp.Cache = &cache.Config{}
+	}
+
+	if err := rp.Cache.Initilize(); err != nil {
+		return err
+	}
+
+	if rp.Refresh == nil {
+		rp.Refresh = &RefreshConfig{}
+	}
+
+	if err := rp.Refresh.Initilize(); err != nil {
+		return err
+	}
+
+	if rp.Pool == nil {
+		rp.Pool = &httpclient.PoolConfig{}
+	}
+
+	if err := rp.Pool.Initilize(); err != nil {
+		return err
+	}
+
+	if rp.Limits == nil {
+		rp.Limits = make(map[string]*LimitConfig)
+	}
+
+	return nil
 }
 
 func (rp *RouteParameters) Merge(target *RouteParameters) *RouteParameters {

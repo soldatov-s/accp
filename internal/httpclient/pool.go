@@ -6,11 +6,28 @@ import (
 	"time"
 )
 
+const (
+	defaultSize    = 20
+	defaultTimeout = 5 * time.Second
+)
+
 type PoolConfig struct {
 	// Size - size of pool httpclients for introspection requests
 	Size int
 	// Timeout - timeout of httpclients for introspection requests
 	Timeout time.Duration
+}
+
+func (pc *PoolConfig) Initilize() error {
+	if pc.Size == 0 {
+		pc.Size = defaultSize
+	}
+
+	if pc.Timeout == 0 {
+		pc.Timeout = defaultTimeout
+	}
+
+	return nil
 }
 
 func (pc *PoolConfig) Merge(target *PoolConfig) *PoolConfig {

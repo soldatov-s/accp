@@ -11,6 +11,11 @@ import (
 
 type empty struct{}
 
+const (
+	defaultKeyPrefix = "accp_"
+	defaultTTL       = 10 * time.Second
+)
+
 type Storage interface {
 	Add(key string, value interface{}, ttl time.Duration) error
 	Select(key string, value interface{}) error
@@ -33,7 +38,23 @@ type CacheConfig struct {
 	TTL       time.Duration
 }
 
+func (cc *CacheConfig) Initilize() error {
+	if cc.KeyPrefix == "" {
+		cc.KeyPrefix = defaultKeyPrefix
+	}
+
+	if cc.TTL == 0 {
+		cc.TTL = defaultTTL
+	}
+
+	return nil
+}
+
 func (cc *CacheConfig) Merge(target *CacheConfig) *CacheConfig {
+	if cc == nil {
+		return target
+	}
+
 	result := &CacheConfig{
 		KeyPrefix: cc.KeyPrefix,
 		TTL:       cc.TTL,

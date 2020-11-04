@@ -72,6 +72,7 @@ func NewHTTPProxy(
 		return nil, err
 	}
 
+	p.excluded = make(map[string]*Route)
 	if err := p.fillExcludedRoutes(p.cfg.Excluded, p.excluded); err != nil {
 		return nil, err
 	}
@@ -89,11 +90,25 @@ func (p *HTTPProxy) fillRoutes(
 	parentRoute string,
 ) error {
 	for k, v := range rc {
+		p.log.Debug().Msgf("parse route \"%s\"", k)
 		routes := r
 		strs := strings.Split(k, "/")
+		// For example:
+		// root/
+		//   - level1_node1
+		//     - level2_node1
+		//     - level2_node2
+		//   - level1_node2
 		for _, s := range strs {
+			if s == "" {
+				continue
+			}
+			p.log.Debug().Msgf("parse path item \"%s\"", s)
 			if route, ok := routes[s]; !ok {
-				routes[k] = &Route{}
+				p.log.Debug().Msgf("create route node \"%s\"", s)
+				routes[s] = &Route{
+					Routes: make(map[string]*Route),
+				}
 			} else {
 				routes = route.Routes
 			}
@@ -104,9 +119,16 @@ func (p *HTTPProxy) fillRoutes(
 			parameters = parameters.Merge(v.Parameters)
 		} else {
 			parameters = v.Parameters
+			if err := parameters.Initilize(); err != nil {
+				return err
+			}
 		}
 
 		lastPartOfRoute := strs[len(strs)-1]
+		if lastPartOfRoute == "" {
+			lastPartOfRoute = strs[len(strs)-2]
+		}
+		p.log.Debug().Msgf("last part of route \"%s\" is \"%s\"", k, lastPartOfRoute)
 		if err := routes[lastPartOfRoute].Initilize(ctx, parentRoute+"/"+k, parameters, externalStorage, pub); err != nil {
 			return err
 		}
@@ -135,14 +157,22 @@ func (p *HTTPProxy) fillExcludedRoutes(
 		routes := r
 		strs := strings.Split(k, "/")
 		for _, s := range strs {
+			if s == "" {
+				continue
+			}
 			if route, ok := routes[s]; !ok {
-				routes[k] = &Route{}
+				routes[k] = &Route{
+					Routes: make(map[string]*Route),
+				}
 			} else {
 				routes = route.Routes
 			}
 		}
 
 		lastPartOfRoute := strs[len(strs)-1]
+		if lastPartOfRoute == "" {
+			lastPartOfRoute = strs[len(strs)-2]
+		}
 		if err := p.fillExcludedRoutes(v.Routes, routes[lastPartOfRoute].Routes); err != nil {
 			return err
 		}
@@ -160,6 +190,9 @@ func (p *HTTPProxy) findRoute(r *http.Request) *Route {
 
 	routes := p.routes
 	for _, s := range strs {
+		if s == "" {
+			continue
+		}
 		if route, ok = routes[s]; !ok {
 			return route
 		}

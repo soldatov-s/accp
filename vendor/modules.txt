@@ -17,6 +17,8 @@ github.com/beorn7/perks/quantile
 github.com/cenkalti/backoff/v3
 # github.com/containerd/continuity v0.0.0-20190827140505-75bee3e2ccb6
 github.com/containerd/continuity/pathdriver
+# github.com/davecgh/go-spew v1.1.1
+github.com/davecgh/go-spew/spew
 # github.com/docker/go-connections v0.4.0
 github.com/docker/go-connections/nat
 # github.com/docker/go-units v0.4.0
@@ -102,6 +104,8 @@ github.com/pelletier/go-toml
 # github.com/pkg/errors v0.9.1
 ## explicit
 github.com/pkg/errors
+# github.com/pmezard/go-difflib v1.0.0
+github.com/pmezard/go-difflib/difflib
 # github.com/prometheus/client_golang v0.9.3
 ## explicit
 github.com/prometheus/client_golang/prometheus
@@ -141,6 +145,10 @@ github.com/spf13/viper
 # github.com/streadway/amqp v1.0.0
 ## explicit
 github.com/streadway/amqp
+# github.com/stretchr/testify v1.6.1
+## explicit
+github.com/stretchr/testify/assert
+github.com/stretchr/testify/require
 # golang.org/x/net v0.0.0-20201006153459-a7d1128ccaa0
 golang.org/x/net/context
 # golang.org/x/sys v0.0.0-20200930185726-fdedc70b468f
@@ -180,3 +188,5 @@ google.golang.org/protobuf/runtime/protoiface
 google.golang.org/protobuf/runtime/protoimpl
 # gopkg.in/yaml.v2 v2.3.0
 gopkg.in/yaml.v2
+# gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c
+gopkg.in/yaml.v3

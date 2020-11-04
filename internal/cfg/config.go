@@ -32,26 +32,7 @@ func NewConfig(command *cobra.Command) (*Configuration, error) {
 	return c, nil
 }
 
-// Initialize initializes configuration control structure and ensures that
-// it is ready for working with configuration.
-func (cfg *Configuration) initialize(command *cobra.Command) error {
-	configPath, err := command.Flags().GetString("config")
-	if err != nil {
-		return err
-	}
-
-	configPath, configName := path.Split(configPath)
-	configName = strings.TrimSuffix(configName, filepath.Ext(configName))
-
-	viper.AddConfigPath(configPath)
-	viper.SetConfigName(configName)
-	viper.SetConfigType("yaml")
-
-	err = viper.ReadInConfig() // Find and read the config file
-	if err != nil {            // Handle errors reading the config file
-		return err
-	}
-
+func (cfg *Configuration) parse() error {
 	if err := viper.UnmarshalKey("logger", &cfg.Logger); err != nil {
 		return err
 	}
@@ -77,4 +58,27 @@ func (cfg *Configuration) initialize(command *cobra.Command) error {
 	}
 
 	return nil
+}
+
+// Initialize initializes configuration control structure and ensures that
+// it is ready for working with configuration.
+func (cfg *Configuration) initialize(command *cobra.Command) error {
+	configPath, err := command.Flags().GetString("config")
+	if err != nil {
+		return err
+	}
+
+	configPath, configName := path.Split(configPath)
+	configName = strings.TrimSuffix(configName, filepath.Ext(configName))
+
+	viper.AddConfigPath(configPath)
+	viper.SetConfigName(configName)
+	viper.SetConfigType("yaml")
+
+	err = viper.ReadInConfig() // Find and read the config file
+	if err != nil {            // Handle errors reading the config file
+		return err
+	}
+
+	return cfg.parse()
 }

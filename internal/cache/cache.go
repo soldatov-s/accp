@@ -12,6 +12,22 @@ type Config struct {
 	External *external.CacheConfig
 }
 
+func (cc *Config) Initilize() error {
+	if cc.Memory == nil {
+		cc.Memory = &memory.CacheConfig{}
+	}
+
+	if err := cc.Memory.Initilize(); err != nil {
+		return err
+	}
+
+	if cc.External != nil {
+		return cc.External.Initilize()
+	}
+
+	return nil
+}
+
 func (cc *Config) Merge(target *Config) *Config {
 	result := &Config{
 		Memory:   cc.Memory,
