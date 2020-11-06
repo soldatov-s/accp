@@ -2,7 +2,6 @@ package httpproxy
 
 import (
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -232,7 +231,7 @@ func (r *Route) Initilize(
 		r.Limits[k] = make(LimitTable)
 	}
 
-	r.Route = strings.ReplaceAll(route, "//", "/")
+	r.Route = route
 
 	return nil
 }

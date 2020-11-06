@@ -15,15 +15,15 @@ const (
 	DefaultPutAnswer      = `{"result":{ "answer" : "it's a put request"}}`
 )
 
-func getRequest(r *http.Request) (res []byte, err error) {
+func getRequest(_ *http.Request) (res []byte, err error) {
 	return []byte(DefaultGetAnswer), nil
 }
 
-func postRequest(r *http.Request) (res []byte, err error) {
+func postRequest(_ *http.Request) (res []byte, err error) {
 	return []byte(DefaultPostAnswer), nil
 }
 
-func putRequest(r *http.Request) (res []byte, err error) {
+func putRequest(_ *http.Request) (res []byte, err error) {
 	return []byte(DefaultPutAnswer), nil
 }
 

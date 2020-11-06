@@ -67,36 +67,35 @@ introspector:
               external:
                 keyprefix: users_
                 ttl: 60s
+    /api/v1/users:
+      parameters:
+        dsn: http://192.168.100.48:30637
+        pool:
+          size: 20
+          timeout: 10s
+        routkey: USERS
+        limits:
+          token:
+            counter: 1000
+            pt: 1m
+          ip:
+            counter: 1000
+            pt: 1m
+          deviceid:
+            header: device-id
+            cookie: device-id
+            counter: 1000
+            pt: 1m
+        refresh:
+          count: 100
+          time: 2m
+        cache:
+          memoryttl: 30s
+          externalttl: 60s
   excluded:
     /api/v2/:
 `
 )
-
-// /api/v1/users:
-// parameters:
-//   dsn: http://192.168.100.48:30637
-//   pool:
-//     size: 20
-//     timeout: 10s
-//   routkey: USERS
-//   limits:
-//     token:
-//       counter: 1000
-//       pt: 1m
-//     ip:
-//       counter: 1000
-//       pt: 1m
-//     deviceid:
-//       header: device-id
-//       cookie: device-id
-//       counter: 1000
-//       pt: 1m
-//   refresh:
-//     count: 100
-//     time: 2m
-//   cache:
-//     memoryttl: 30s
-//     externalttl: 60s
 
 func LoadTestYAML() error {
 	viper.SetConfigType("yaml")

@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -89,11 +90,28 @@ func (p *HTTPProxy) fillRoutes(
 	parentParameters *RouteParameters,
 	parentRoute string,
 ) error {
-	for k, v := range rc {
+	// Sort config map
+	keys := make([]string, 0)
+
+	for k := range rc {
+		keys = append(keys, k)
+	}
+
+	sort.Strings(keys)
+
+	for _, configKey := range keys {
+		k := strings.Trim(configKey, "/")
 		p.log.Debug().Msgf("parse route \"%s\"", k)
-		var lastRoute map[string]*Route
+		// Check for duplicate
+		if p.FindRouteByPath(parentRoute+"/"+k) != nil {
+			p.log.Warn().Msgf("duplicated route: %s", parentRoute+"/"+k)
+			return nil
+		}
+
+		var previousLevelRoutes map[string]*Route
 		routes := r
 		strs := strings.Split(k, "/")
+
 		// For example:
 		// root/
 		//   - level1_node1
@@ -110,7 +128,7 @@ func (p *HTTPProxy) fillRoutes(
 				routes[s] = &Route{
 					Routes: make(map[string]*Route),
 				}
-				lastRoute = routes
+				previousLevelRoutes = routes
 				routes = routes[s].Routes
 			} else {
 				routes = route.Routes
@@ -119,9 +137,9 @@ func (p *HTTPProxy) fillRoutes(
 
 		parameters := parentParameters
 		if parameters != nil {
-			parameters = parameters.Merge(v.Parameters)
+			parameters = parameters.Merge(rc[configKey].Parameters)
 		} else {
-			parameters = v.Parameters
+			parameters = rc[configKey].Parameters
 			if err := parameters.Initilize(); err != nil {
 				return err
 			}
@@ -134,11 +152,11 @@ func (p *HTTPProxy) fillRoutes(
 
 		p.log.Debug().Msgf("last part of route \"%s\" is \"%s\"", k, lastPartOfRoute)
 
-		if err := lastRoute[lastPartOfRoute].Initilize(ctx, parentRoute+"/"+k, parameters, externalStorage, pub); err != nil {
+		if err := previousLevelRoutes[lastPartOfRoute].Initilize(ctx, parentRoute+"/"+k, parameters, externalStorage, pub); err != nil {
 			return err
 		}
 
-		if v == nil {
+		if rc[configKey] == nil {
 			return nil
 		}
 
@@ -146,8 +164,8 @@ func (p *HTTPProxy) fillRoutes(
 			ctx,
 			externalStorage,
 			pub,
-			v.Routes,
-			lastRoute[lastPartOfRoute].Routes,
+			rc[configKey].Routes,
+			previousLevelRoutes[lastPartOfRoute].Routes,
 			parameters,
 			parentRoute+"/"+k,
 		); err != nil {
@@ -162,9 +180,18 @@ func (p *HTTPProxy) fillExcludedRoutes(
 	rc map[string]*RouteConfig,
 	r map[string]*Route,
 ) error {
-	for k, v := range rc {
+	keys := make([]string, 0)
+
+	for k := range rc {
+		keys = append(keys, k)
+	}
+
+	sort.Strings(keys)
+
+	for _, configKey := range keys {
+		k := strings.Trim(configKey, "/")
 		p.log.Debug().Msgf("parse excluded route \"%s\"", k)
-		var lastRoute map[string]*Route
+		var previousLevelRoutes map[string]*Route
 		routes := r
 		strs := strings.Split(k, "/")
 		for _, s := range strs {
@@ -177,7 +204,7 @@ func (p *HTTPProxy) fillExcludedRoutes(
 				routes[s] = &Route{
 					Routes: make(map[string]*Route),
 				}
-				lastRoute = routes
+				previousLevelRoutes = routes
 				routes = routes[s].Routes
 			} else {
 				routes = route.Routes
@@ -190,11 +217,11 @@ func (p *HTTPProxy) fillExcludedRoutes(
 		}
 
 		p.log.Debug().Msgf("last part of excluded route \"%s\" is \"%s\"", k, lastPartOfRoute)
-		if v == nil {
+		if rc[configKey] == nil {
 			return nil
 		}
 
-		if err := p.fillExcludedRoutes(v.Routes, lastRoute[lastPartOfRoute].Routes); err != nil {
+		if err := p.fillExcludedRoutes(rc[configKey].Routes, previousLevelRoutes[lastPartOfRoute].Routes); err != nil {
 			return err
 		}
 	}
@@ -202,14 +229,14 @@ func (p *HTTPProxy) fillExcludedRoutes(
 	return nil
 }
 
-func (p *HTTPProxy) FindRoute(r *http.Request) *Route {
-	strs := strings.Split(r.URL.Path, "/")
+func (p *HTTPProxy) findRoute(path string, routes map[string]*Route) *Route {
+	path = strings.Trim(path, "/")
+	strs := strings.Split(path, "/")
 	var (
 		route *Route
 		ok    bool
 	)
 
-	routes := p.routes
 	for _, s := range strs {
 		if s == "" {
 			continue
@@ -225,22 +252,20 @@ func (p *HTTPProxy) FindRoute(r *http.Request) *Route {
 	return route
 }
 
-func (p *HTTPProxy) FindExcludedRoute(r *http.Request) *Route {
-	strs := strings.Split(r.URL.Path, "/")
-	var (
-		route *Route
-		ok    bool
-	)
+func (p *HTTPProxy) FindRouteByPath(path string) *Route {
+	return p.findRoute(path, p.routes)
+}
 
-	routes := p.excluded
-	for _, s := range strs {
-		if route, ok = routes[s]; !ok {
-			return route
-		}
-		routes = route.Routes
-	}
+func (p *HTTPProxy) FindRouteByHTTPRequest(r *http.Request) *Route {
+	return p.FindRouteByPath(r.URL.Path)
+}
 
-	return route
+func (p *HTTPProxy) FindExcludedRouteByPath(path string) *Route {
+	return p.findRoute(path, p.excluded)
+}
+
+func (p *HTTPProxy) FindExcludedRouteByHTTPRequest(r *http.Request) *Route {
+	return p.FindExcludedRouteByPath(r.URL.Path)
 }
 
 func (p *HTTPProxy) refresh(rrdata *accpmodels.RRData, hk string, route *Route) {
@@ -407,16 +432,16 @@ func (p *HTTPProxy) defaultHandler(w http.ResponseWriter, r *http.Request) {
 
 func (p *HTTPProxy) proxyHandler(w http.ResponseWriter, r *http.Request) {
 	// Handle excluded routes
-	route := p.FindExcludedRoute(r)
+	route := p.FindExcludedRouteByHTTPRequest(r)
 	if route != nil {
 		p.defaultHandler(w, r)
 		return
 	}
 
-	route = p.FindRoute(r)
+	route = p.FindRouteByHTTPRequest(r)
 
 	// Adding to request header the requestID
-	p.hydrationID(r)
+	p.HydrationID(r)
 
 	// The check an authorization token
 	if p.introspector != nil && route.Introspect {
@@ -460,7 +485,7 @@ func (p *HTTPProxy) hashKey(r *http.Request) (string, error) {
 	return base64.URLEncoding.EncodeToString(sum), nil
 }
 
-func (p *HTTPProxy) hydrationID(r *http.Request) {
+func (p *HTTPProxy) HydrationID(r *http.Request) {
 	if !p.cfg.Hydration.RequestID {
 		return
 	}
@@ -472,6 +497,7 @@ func (p *HTTPProxy) hydrationID(r *http.Request) {
 			p.log.Err(err).Msg("failed to generate requesID")
 			return
 		}
+		r.Header.Del("x-request-id")
 		r.Header.Add("x-request-id", newUUID.String())
 	}
 }
