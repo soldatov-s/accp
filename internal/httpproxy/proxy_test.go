@@ -1,7 +1,9 @@
 package httpproxy_test
 
 import (
+	"io/ioutil"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/soldatov-s/accp/internal/cfg"
@@ -55,7 +57,7 @@ func TestHTTPProxy_FindRouteByHTTPRequest(t *testing.T) {
 func TestHTTPProxy_FindExcluededRouteByHTTPRequest(t *testing.T) {
 	p := initProxy(t)
 
-	r, err := http.NewRequest("GET", "/api/v1/users/search", nil)
+	r, err := http.NewRequest("POST", "/api/v1/users/search", nil)
 	require.Nil(t, err)
 
 	route := p.FindExcludedRouteByHTTPRequest(r)
@@ -102,4 +104,30 @@ func TestHTTPProxy_HydrationID(t *testing.T) {
 			t.Logf("x-request-id is %s", headerValue)
 		})
 	}
+}
+
+func TestHTTPProxy_DefaultHandler(t *testing.T) {
+	server := httpproxy.FakeService(t, "localhost:9090")
+	server.Start()
+	defer server.Close()
+
+	p := initProxy(t)
+
+	r, err := http.NewRequest("POST", "/api/v1/users/search", nil)
+	require.Nil(t, err)
+
+	route := p.FindExcludedRouteByHTTPRequest(r)
+	require.NotNil(t, route)
+
+	t.Logf("route value %+v", route)
+
+	w := httptest.NewRecorder()
+	p.DefaultHandler(route, w, r)
+
+	resp := w.Result()
+	body, _ := ioutil.ReadAll(resp.Body)
+
+	t.Log(resp.StatusCode)
+	t.Log(resp.Header.Get("Content-Type"))
+	t.Log(string(body))
 }

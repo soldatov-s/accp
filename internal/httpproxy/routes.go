@@ -241,6 +241,18 @@ func (r *Route) Initilize(
 	return nil
 }
 
+func (r *Route) InitilizeExcluded(
+	ctx *context.Context,
+	route string,
+	parameters *RouteParameters,
+) {
+	r.ctx = ctx
+	r.log = ctx.GetPackageLogger(empty{})
+	r.parameters = parameters
+	r.Pool = httpclient.NewPool(parameters.Pool.Size, parameters.Pool.Timeout)
+	r.Route = route
+}
+
 func (r *Route) GetLimitsFromRequest(req *http.Request) map[string]interface{} {
 	limitList := make(map[string]interface{})
 

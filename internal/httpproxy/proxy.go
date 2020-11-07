@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"io"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 	"sync"
@@ -163,7 +164,7 @@ func (p *HTTPProxy) fillRoutes(
 			return nil
 		}
 
-		if err := p.fillExcludedRoutes(rc[configKey], parentRoute+"/"+k, parameters); err != nil {
+		if err := p.fillExcludedRoutes(ctx, rc[configKey], parentRoute+"/"+k, parameters); err != nil {
 			return nil
 		}
 
@@ -183,7 +184,12 @@ func (p *HTTPProxy) fillRoutes(
 	return nil
 }
 
-func (p *HTTPProxy) fillExcludedRoutes(rc *RouteConfig, parentRoute string, parentParameters *RouteParameters) error {
+func (p *HTTPProxy) fillExcludedRoutes(
+	ctx *ctxint.Context,
+	rc *RouteConfig,
+	parentRoute string,
+	parentParameters *RouteParameters,
+) error {
 	for _, route := range rc.Excluded {
 		k := strings.Trim(parentRoute+"/"+route, "/")
 		p.log.Debug().Msgf("parse excluded route \"%s\"", k)
@@ -221,7 +227,7 @@ func (p *HTTPProxy) fillExcludedRoutes(rc *RouteConfig, parentRoute string, pare
 		}
 
 		p.log.Debug().Msgf("last part of route \"%s\" is \"%s\"", k, lastPartOfRoute)
-		previousLevelRoutes[lastPartOfRoute].parameters = parentParameters
+		previousLevelRoutes[lastPartOfRoute].InitilizeExcluded(ctx, k, parentParameters)
 	}
 	return nil
 }
@@ -367,6 +373,8 @@ func (p *HTTPProxy) getHandler(route *Route, w http.ResponseWriter, r *http.Requ
 			// Proxy request to backend
 			client := route.Pool.GetFromPool()
 
+			r.URL.Host = route.parameters.DSN
+
 			resp, err := client.Do(r)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusServiceUnavailable)
@@ -407,9 +415,21 @@ func (p *HTTPProxy) getHandler(route *Route, w http.ResponseWriter, r *http.Requ
 	}
 }
 
-func (p *HTTPProxy) DefaultHandler(w http.ResponseWriter, r *http.Request) {
+// DefaultHandler is handler for proxy requests to excluded routes and routes whitch not need to cache
+func (p *HTTPProxy) DefaultHandler(route *Route, w http.ResponseWriter, r *http.Request) {
 	// Proxy request to backend
-	resp, err := http.DefaultTransport.RoundTrip(r)
+	client := route.Pool.GetFromPool()
+
+	var err error
+	r.URL, err = url.Parse(route.parameters.DSN + r.URL.String())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+
+	p.log.Debug().Msg(r.URL.String())
+
+	resp, err := client.Do(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
@@ -430,7 +450,7 @@ func (p *HTTPProxy) proxyHandler(w http.ResponseWriter, r *http.Request) {
 	// Handle excluded routes
 	route := p.FindExcludedRouteByHTTPRequest(r)
 	if route != nil {
-		p.DefaultHandler(w, r)
+		p.DefaultHandler(route, w, r)
 		return
 	}
 
@@ -466,7 +486,7 @@ func (p *HTTPProxy) proxyHandler(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		p.getHandler(route, w, r)
 	default:
-		p.DefaultHandler(w, r)
+		p.DefaultHandler(route, w, r)
 	}
 }
 

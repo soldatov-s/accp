@@ -37,7 +37,7 @@ introspector:
     /api/v1/:
       parameters:
         introspect: true
-        dsn: http://192.168.100.48:30637
+        dsn: http://localhost:9090
         pool:
           size: 20
           timeout: 10s
@@ -71,7 +71,7 @@ introspector:
             - search
     /api/v1/users:
       parameters:
-        dsn: http://192.168.100.48:30637
+        dsn: http://localhost:9091
         pool:
           size: 20
           timeout: 10s

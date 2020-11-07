@@ -41,7 +41,12 @@ func FakeService(t *testing.T, host string) *httptest.Server {
 
 		switch r.Method {
 		case "GET":
-			res, err = getRequest(r)
+			switch r.URL.Path {
+			// case "/api/v1/users/search":
+			// 	fallthrough
+			default:
+				res, err = getRequest(r)
+			}
 		case "POST":
 			res, err = postRequest(r)
 		case "PUT":
@@ -51,6 +56,7 @@ func FakeService(t *testing.T, host string) *httptest.Server {
 		if err != nil {
 			t.Fatal(err)
 		}
+		w.Header().Add("Content-Type", "application/json")
 		_, err = w.Write(res)
 		if err != nil {
 			t.Fatal(err)
