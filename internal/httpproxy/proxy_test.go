@@ -31,7 +31,7 @@ func TestNewHTTPProxy(t *testing.T) {
 	initProxy(t)
 }
 
-func TestFindRouteByPath(t *testing.T) {
+func TestHTTPProxy_FindRouteByPath(t *testing.T) {
 	p := initProxy(t)
 
 	route := p.FindRouteByPath("/api/v1/users")
@@ -40,7 +40,7 @@ func TestFindRouteByPath(t *testing.T) {
 	t.Logf("route value %+v", route)
 }
 
-func TestFindRouteByHTTPRequest(t *testing.T) {
+func TestHTTPProxy_FindRouteByHTTPRequest(t *testing.T) {
 	p := initProxy(t)
 
 	r, err := http.NewRequest("GET", "/api/v1/users", nil)
@@ -52,10 +52,10 @@ func TestFindRouteByHTTPRequest(t *testing.T) {
 	t.Logf("route value %+v", route)
 }
 
-func TestFindExcluededRouteByHTTPRequest(t *testing.T) {
+func TestHTTPProxy_FindExcluededRouteByHTTPRequest(t *testing.T) {
 	p := initProxy(t)
 
-	r, err := http.NewRequest("GET", "/api/v2/", nil)
+	r, err := http.NewRequest("GET", "/api/v1/users/search", nil)
 	require.Nil(t, err)
 
 	route := p.FindExcludedRouteByHTTPRequest(r)

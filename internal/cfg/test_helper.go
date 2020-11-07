@@ -67,6 +67,8 @@ introspector:
               external:
                 keyprefix: users_
                 ttl: 60s
+          excluded:
+            - search
     /api/v1/users:
       parameters:
         dsn: http://192.168.100.48:30637
@@ -92,8 +94,6 @@ introspector:
         cache:
           memoryttl: 30s
           externalttl: 60s
-  excluded:
-    /api/v2/:
 `
 )
 

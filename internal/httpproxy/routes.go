@@ -167,9 +167,14 @@ func (rp *RouteParameters) Merge(target *RouteParameters) *RouteParameters {
 	return result
 }
 
+// RouteConfig declares a route configuration
 type RouteConfig struct {
+	// Parameters are parameters of route
 	Parameters *RouteParameters
-	Routes     map[string]*RouteConfig
+	// Routes are subroutes of route
+	Routes map[string]*RouteConfig
+	// Excluded is an exluded subroutes from route
+	Excluded []string
 }
 
 type Route struct {

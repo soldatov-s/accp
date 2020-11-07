@@ -68,19 +68,22 @@ func NewHTTPProxy(
 
 	p.log = ctx.GetPackageLogger(empty{})
 	p.routes = make(map[string]*Route)
+	p.excluded = make(map[string]*Route)
 
 	if err := p.fillRoutes(ctx, externalStorage, pub, p.cfg.Routes, p.routes, nil, ""); err != nil {
 		return nil, err
 	}
 
-	p.excluded = make(map[string]*Route)
-	if err := p.fillExcludedRoutes(p.cfg.Excluded, p.excluded); err != nil {
-		return nil, err
-	}
+	// if err := p.fillExcludedRoutes(p.cfg.Routes, p.excluded, nil, ""); err != nil {
+	// 	return nil, err
+	// }
 
 	return p, nil
 }
 
+// fillRoutes fill routes map
+// r - routes
+// er - excluded routes
 func (p *HTTPProxy) fillRoutes(
 	ctx *ctxint.Context,
 	externalStorage external.Storage,
@@ -160,6 +163,10 @@ func (p *HTTPProxy) fillRoutes(
 			return nil
 		}
 
+		if err := p.fillExcludedRoutes(rc[configKey], parentRoute+"/"+k, parameters); err != nil {
+			return nil
+		}
+
 		if err := p.fillRoutes(
 			ctx,
 			externalStorage,
@@ -176,23 +183,20 @@ func (p *HTTPProxy) fillRoutes(
 	return nil
 }
 
-func (p *HTTPProxy) fillExcludedRoutes(
-	rc map[string]*RouteConfig,
-	r map[string]*Route,
-) error {
-	keys := make([]string, 0)
-
-	for k := range rc {
-		keys = append(keys, k)
-	}
-
-	sort.Strings(keys)
-
-	for _, configKey := range keys {
-		k := strings.Trim(configKey, "/")
+func (p *HTTPProxy) fillExcludedRoutes(rc *RouteConfig, parentRoute string, parentParameters *RouteParameters) error {
+	for _, route := range rc.Excluded {
+		k := strings.Trim(parentRoute+"/"+route, "/")
 		p.log.Debug().Msgf("parse excluded route \"%s\"", k)
+		// Check for duplicate
+		if p.FindExcludedRouteByPath(k) != nil {
+			p.log.Warn().Msgf("duplicated excluded route: %s", k)
+			return nil
+		}
+
 		var previousLevelRoutes map[string]*Route
-		routes := r
+		routes := p.excluded
+
+		p.log.Debug().Msgf("parse excluded route \"%s\"", k)
 		strs := strings.Split(k, "/")
 		for _, s := range strs {
 			if s == "" {
@@ -216,16 +220,9 @@ func (p *HTTPProxy) fillExcludedRoutes(
 			lastPartOfRoute = strs[len(strs)-2]
 		}
 
-		p.log.Debug().Msgf("last part of excluded route \"%s\" is \"%s\"", k, lastPartOfRoute)
-		if rc[configKey] == nil {
-			return nil
-		}
-
-		if err := p.fillExcludedRoutes(rc[configKey].Routes, previousLevelRoutes[lastPartOfRoute].Routes); err != nil {
-			return err
-		}
+		p.log.Debug().Msgf("last part of route \"%s\" is \"%s\"", k, lastPartOfRoute)
+		previousLevelRoutes[lastPartOfRoute].parameters = parentParameters
 	}
-
 	return nil
 }
 
@@ -243,7 +240,6 @@ func (p *HTTPProxy) findRoute(path string, routes map[string]*Route) *Route {
 		}
 		p.log.Debug().Msgf("search path item \"%s\"", s)
 		if route, ok = routes[s]; !ok {
-			p.log.Debug().Msgf("search path item \"%s\"", s)
 			return route
 		}
 		routes = route.Routes
@@ -411,7 +407,7 @@ func (p *HTTPProxy) getHandler(route *Route, w http.ResponseWriter, r *http.Requ
 	}
 }
 
-func (p *HTTPProxy) defaultHandler(w http.ResponseWriter, r *http.Request) {
+func (p *HTTPProxy) DefaultHandler(w http.ResponseWriter, r *http.Request) {
 	// Proxy request to backend
 	resp, err := http.DefaultTransport.RoundTrip(r)
 	if err != nil {
@@ -434,7 +430,7 @@ func (p *HTTPProxy) proxyHandler(w http.ResponseWriter, r *http.Request) {
 	// Handle excluded routes
 	route := p.FindExcludedRouteByHTTPRequest(r)
 	if route != nil {
-		p.defaultHandler(w, r)
+		p.DefaultHandler(w, r)
 		return
 	}
 
@@ -470,7 +466,7 @@ func (p *HTTPProxy) proxyHandler(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		p.getHandler(route, w, r)
 	default:
-		p.defaultHandler(w, r)
+		p.DefaultHandler(w, r)
 	}
 }
 
