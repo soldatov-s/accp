@@ -59,7 +59,7 @@ func (c *Cache) Add(key string, data cachedata.CacheData) error {
 		return err
 	}
 
-	if c.External != nil {
+	if c.External == nil {
 		return nil
 	}
 

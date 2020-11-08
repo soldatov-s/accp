@@ -166,3 +166,30 @@ func TestIntrospection(t *testing.T) {
 	err = p.HydrationIntrospect(route, r)
 	require.NotNil(t, err)
 }
+
+func TestHTTPProxy_GetHandler(t *testing.T) {
+	server := testProxyHelpers.FakeBackendService(t, "localhost:9090")
+	server.Start()
+	defer server.Close()
+
+	p := initProxy(t)
+
+	r, err := http.NewRequest("GET", "/api/v1/users", nil)
+	require.Nil(t, err)
+
+	route := p.FindRouteByHTTPRequest(r)
+	require.NotNil(t, route)
+
+	t.Logf("route value %+v", route)
+
+	w := httptest.NewRecorder()
+	p.GetHandler(route, w, r)
+
+	resp := w.Result()
+	body, _ := ioutil.ReadAll(resp.Body)
+	defer resp.Body.Close()
+
+	t.Log(resp.StatusCode)
+	t.Log(resp.Header.Get("Content-Type"))
+	t.Log(string(body))
+}

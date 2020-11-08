@@ -28,17 +28,15 @@ func (r *Request) UnmarshalBinary(data []byte) error {
 }
 
 func (r *Request) Read(req *http.Request) error {
-	if r == nil {
-		r = &Request{}
-	}
-
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	buf := new(bytes.Buffer)
-	_, err := io.Copy(buf, req.Body)
-	if err != nil {
-		return err
+	if req.Body != nil {
+		_, err := io.Copy(buf, req.Body)
+		if err != nil {
+			return err
+		}
 	}
 
 	r.Body = buf.String()

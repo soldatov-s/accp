@@ -19,6 +19,13 @@ type RRData struct {
 	}
 }
 
+func NewRRData() *RRData {
+	return &RRData{
+		Response: &Response{},
+		Request:  &Request{},
+	}
+}
+
 // RRDataMarshal is middlobject for marshaling RRData
 type RRDataMarshal struct {
 	Response       *Response

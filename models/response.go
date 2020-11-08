@@ -36,10 +36,6 @@ func (r *Response) Write(w http.ResponseWriter) error {
 }
 
 func (r *Response) Read(resp *http.Response) error {
-	if r == nil {
-		r = &Response{}
-	}
-
 	r.readMu.Lock()
 	defer r.readMu.Unlock()
 

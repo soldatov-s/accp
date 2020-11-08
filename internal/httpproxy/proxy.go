@@ -335,7 +335,7 @@ func (p *HTTPProxy) waitAnswer(w http.ResponseWriter, r *http.Request, hk string
 	http.Error(w, "failed to get data from cache", http.StatusServiceUnavailable)
 }
 
-func (p *HTTPProxy) getHandler(route *Route, w http.ResponseWriter, r *http.Request) {
+func (p *HTTPProxy) GetHandler(route *Route, w http.ResponseWriter, r *http.Request) {
 	hk, err := p.hashKey(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
@@ -369,7 +369,11 @@ func (p *HTTPProxy) getHandler(route *Route, w http.ResponseWriter, r *http.Requ
 			// Proxy request to backend
 			client := route.Pool.GetFromPool()
 
-			r.URL.Host = route.parameters.DSN
+			r.URL, err = url.Parse(route.parameters.DSN + r.URL.String())
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusServiceUnavailable)
+				return
+			}
 
 			resp, err := client.Do(r)
 			if err != nil {
@@ -378,7 +382,7 @@ func (p *HTTPProxy) getHandler(route *Route, w http.ResponseWriter, r *http.Requ
 			}
 			defer resp.Body.Close()
 
-			rrData := &accpmodels.RRData{}
+			rrData := accpmodels.NewRRData()
 			if err := rrData.Request.Read(r); err != nil {
 				p.log.Err(err).Msg("failed to read data from request")
 			}
@@ -476,7 +480,7 @@ func (p *HTTPProxy) proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
-		p.getHandler(route, w, r)
+		p.GetHandler(route, w, r)
 	default:
 		p.DefaultHandler(route, w, r)
 	}
@@ -484,8 +488,10 @@ func (p *HTTPProxy) proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 func (p *HTTPProxy) hashKey(r *http.Request) (string, error) {
 	buf := bytes.Buffer{}
-	if _, err := io.Copy(&buf, r.Body); err != nil {
-		return "", err
+	if r.Body != nil {
+		if _, err := io.Copy(&buf, r.Body); err != nil {
+			return "", err
+		}
 	}
 
 	p.log.Debug().Msgf("request: %s; body: %s", r.URL.RequestURI(), buf.String())
