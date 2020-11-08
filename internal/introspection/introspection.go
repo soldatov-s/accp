@@ -126,7 +126,11 @@ func (i *Introspect) IntrospectRequest(r *http.Request) ([]byte, error) {
 		return nil, err
 	}
 
-	i.log.Debug().Msgf("token from request: %s", token[0:4]+"****"+token[len(token)-4:])
+	if len(token) > 8 {
+		i.log.Debug().Msgf("token from request: \"%s\"", token[0:4]+"****"+token[len(token)-4:])
+	} else {
+		i.log.Debug().Msgf("token from request: \"%s\"", token)
+	}
 
 	client := i.pool.GetFromPool()
 	defer i.pool.PutToPool(client)
@@ -146,6 +150,8 @@ func (i *Introspect) IntrospectRequest(r *http.Request) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	i.log.Debug().Msgf("introspection result: %s", string(contents))
 
 	if !i.isValid(contents) {
 		return nil, &ErrTokenInactive{token: token}

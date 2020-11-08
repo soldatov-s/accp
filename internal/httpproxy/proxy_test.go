@@ -6,24 +6,35 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/soldatov-s/accp/internal/cfg"
 	context "github.com/soldatov-s/accp/internal/ctx"
 	"github.com/soldatov-s/accp/internal/httpproxy"
 	"github.com/soldatov-s/accp/internal/introspection"
+	testhelpers "github.com/soldatov-s/accp/x/test_helpers"
+	testProxyHelpers "github.com/soldatov-s/accp/x/test_helpers/proxy"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func initProxy(t *testing.T) *httpproxy.HTTPProxy {
-	c, err := cfg.LoadTestConfig()
+	err := testhelpers.LoadTestYAML()
+	require.Nil(t, err)
+
+	lc, err := testhelpers.LoadTestConfigLogger()
 	require.Nil(t, err)
 
 	ctx := context.NewContext()
-	ctx.InitilizeLogger(c.Logger)
-	i, err := introspection.NewIntrospector(ctx, c.Introspector)
+	ctx.InitilizeLogger(lc)
+
+	ic, err := testhelpers.LoadTestConfigIntrospector()
 	require.Nil(t, err)
 
-	p, err := httpproxy.NewHTTPProxy(ctx, c.Proxy, i, nil, nil)
+	i, err := introspection.NewIntrospector(ctx, ic)
+	require.Nil(t, err)
+
+	pc, err := testhelpers.LoadTestConfigProxy()
+	require.Nil(t, err)
+
+	p, err := httpproxy.NewHTTPProxy(ctx, pc, i, nil, nil)
 	require.Nil(t, err)
 
 	return p
@@ -107,7 +118,7 @@ func TestHTTPProxy_HydrationID(t *testing.T) {
 }
 
 func TestHTTPProxy_DefaultHandler(t *testing.T) {
-	server := httpproxy.FakeService(t, "localhost:9090")
+	server := testProxyHelpers.FakeBackendService(t, "localhost:9090")
 	server.Start()
 	defer server.Close()
 
@@ -126,8 +137,32 @@ func TestHTTPProxy_DefaultHandler(t *testing.T) {
 
 	resp := w.Result()
 	body, _ := ioutil.ReadAll(resp.Body)
+	defer resp.Body.Close()
 
 	t.Log(resp.StatusCode)
 	t.Log(resp.Header.Get("Content-Type"))
 	t.Log(string(body))
+}
+
+func TestIntrospection(t *testing.T) {
+	server := testProxyHelpers.FakeIntrospectorService(t, testhelpers.IntrospectorHost)
+	server.Start()
+	defer server.Close()
+
+	p := initProxy(t)
+
+	r, err := http.NewRequest("GET", "/api/v1/users", nil)
+	require.Nil(t, err)
+
+	route := p.FindRouteByHTTPRequest(r)
+	require.NotNil(t, route)
+
+	r.Header.Add("Authorization", "bearer "+testProxyHelpers.TestToken)
+
+	err = p.HydrationIntrospect(route, r)
+	require.Nil(t, err)
+
+	r.Header.Set("Authorization", "bearer "+testProxyHelpers.BadToken)
+	err = p.HydrationIntrospect(route, r)
+	require.NotNil(t, err)
 }

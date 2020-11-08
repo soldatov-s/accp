@@ -2,6 +2,7 @@ package httpproxy
 
 import (
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -100,6 +101,12 @@ func (rp *RouteParameters) Initilize() error {
 
 	if rp.Limits == nil {
 		rp.Limits = make(map[string]*LimitConfig)
+		rp.Limits["token"] = &LimitConfig{
+			Header: []string{"Authorization"},
+		}
+		rp.Limits["ip"] = &LimitConfig{
+			Header: []string{"X-Forwarded-For"},
+		}
 	}
 
 	return nil
@@ -259,6 +266,19 @@ func (r *Route) GetLimitsFromRequest(req *http.Request) map[string]interface{} {
 	for k, v := range r.parameters.Limits {
 		for _, vv := range v.Header {
 			if h := req.Header.Get(vv); h != "" {
+				if vv == "Authorization" {
+					splitToken := strings.Split(h, " ")
+					if len(splitToken) < 2 {
+						h = splitToken[0]
+					} else {
+						h = splitToken[1]
+					}
+				}
+				// Always taken client IP
+				if vv == "X-Forwarded-For" {
+					splitIP := strings.Split(h, ",")
+					h = splitIP[0]
+				}
 				limitList[k] = h
 			}
 		}
@@ -309,9 +329,9 @@ func (r *Route) CheckLimits(req *http.Request) (*bool, error) {
 				result = result && false
 				r.log.Debug().Msgf("limit reached: %s", k)
 			} else if time.Now().Add(-r.parameters.Limits[k].PT).Unix() >= vv.LastAccess {
+				vv.Counter = 1
+				vv.LastAccess = time.Now().Unix()
 				go func() {
-					vv.Counter = 1
-					vv.LastAccess = time.Now().Unix()
 					if err := vv.UpdateLimit(r.Route, k, r.Cache.External); err != nil {
 						r.log.Err(err).Msgf("failed to update limit %s in external cache", k)
 					}
@@ -331,6 +351,10 @@ func (r *Route) RefreshHandler() {
 			client := r.Pool.GetFromPool()
 			if err := data.Update(client); err != nil {
 				r.log.Err(err).Msg("failed to update inmemory cache")
+			}
+
+			if r.Cache.External == nil {
+				return
 			}
 
 			if err := r.Cache.External.Update(k.(string), data); err != nil {

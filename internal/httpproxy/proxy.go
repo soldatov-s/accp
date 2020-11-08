@@ -75,10 +75,6 @@ func NewHTTPProxy(
 		return nil, err
 	}
 
-	// if err := p.fillExcludedRoutes(p.cfg.Routes, p.excluded, nil, ""); err != nil {
-	// 	return nil, err
-	// }
-
 	return p, nil
 }
 
@@ -460,17 +456,13 @@ func (p *HTTPProxy) proxyHandler(w http.ResponseWriter, r *http.Request) {
 	p.HydrationID(r)
 
 	// The check an authorization token
-	if p.introspector != nil && route.Introspect {
-		introspectBody, err := p.introspector.IntrospectRequest(r)
-		if _, ok := err.(*introspection.ErrTokenInactive); ok {
-			http.Error(w, err.Error(), http.StatusUnauthorized)
-			return
-		} else if err != nil {
-			http.Error(w, err.Error(), http.StatusServiceUnavailable)
-			return
-		}
-
-		p.hydrationIntrospect(r, introspectBody)
+	err := p.HydrationIntrospect(route, r)
+	if _, ok := err.(*introspection.ErrTokenInactive); ok {
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	} else if err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
 	}
 
 	// Check limits
@@ -518,11 +510,21 @@ func (p *HTTPProxy) HydrationID(r *http.Request) {
 	}
 }
 
-func (p *HTTPProxy) hydrationIntrospect(r *http.Request, content []byte) {
+func (p *HTTPProxy) HydrationIntrospect(route *Route, r *http.Request) error {
+	if p.introspector == nil || !route.Introspect {
+		p.log.Debug().Msgf("no introspector or disabled introspection: %s", route.Route)
+		return nil
+	}
+
+	content, err := p.introspector.IntrospectRequest(r)
+	if err != nil {
+		return err
+	}
+
 	var str string
 	switch p.cfg.Hydration.Introspect {
 	case "nothing":
-		return
+		return nil
 	case "plaintext":
 		str = strings.ReplaceAll(strings.ReplaceAll(string(content), "\"", "\\\""), "\n", "")
 	case "base64":
@@ -531,6 +533,8 @@ func (p *HTTPProxy) hydrationIntrospect(r *http.Request, content []byte) {
 
 	r.Header.Add("accp-introspect-body", str)
 	p.log.Debug().Msgf("accp-introspect-body header: %s", r.Header.Get("accp-introspect-body"))
+
+	return nil
 }
 
 func (p *HTTPProxy) Start() {

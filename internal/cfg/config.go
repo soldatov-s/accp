@@ -32,7 +32,7 @@ func NewConfig(command *cobra.Command) (*Configuration, error) {
 	return c, nil
 }
 
-func (cfg *Configuration) parse() error {
+func (cfg *Configuration) Parse() error {
 	if err := viper.UnmarshalKey("logger", &cfg.Logger); err != nil {
 		return err
 	}
@@ -80,5 +80,5 @@ func (cfg *Configuration) initialize(command *cobra.Command) error {
 		return err
 	}
 
-	return cfg.parse()
+	return cfg.Parse()
 }

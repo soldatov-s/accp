@@ -88,7 +88,7 @@ func (l *Limit) UpdateLimit(route, key string, externalStorage *external.Cache) 
 	if externalStorage == nil {
 		return nil
 	}
-
+	// TODO: add distributed mutex, because maybe race condition between instance
 	counterData, lastAccessData, err := l.marshal()
 	if err != nil {
 		return err
@@ -106,7 +106,7 @@ func (l *Limit) UpdateLimit(route, key string, externalStorage *external.Cache) 
 }
 
 func (l *Limit) CreateLimit(route, key string, externalStorage *external.Cache) error {
-	if externalStorage != nil {
+	if externalStorage == nil {
 		return nil
 	}
 

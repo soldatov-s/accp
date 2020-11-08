@@ -1,8 +1,6 @@
-package httpproxy
+package testproxyhelpers
 
 import (
-	"fmt"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -27,12 +25,7 @@ func putRequest(_ *http.Request) (res []byte, err error) {
 	return []byte(DefaultPutAnswer), nil
 }
 
-func FakeService(t *testing.T, host string) *httptest.Server {
-	listener, err := net.Listen("tcp", host)
-	if err != nil {
-		t.Fatal(fmt.Sprintf("httptest: failed to listen on a port: %v", err))
-	}
-
+func FakeBackendService(t *testing.T, host string) *httptest.Server {
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		var (
 			err error
@@ -40,16 +33,16 @@ func FakeService(t *testing.T, host string) *httptest.Server {
 		)
 
 		switch r.Method {
-		case "GET":
+		case http.MethodGet:
 			switch r.URL.Path {
 			// case "/api/v1/users/search":
 			// 	fallthrough
 			default:
 				res, err = getRequest(r)
 			}
-		case "POST":
+		case http.MethodPost:
 			res, err = postRequest(r)
-		case "PUT":
+		case http.MethodPut:
 			res, err = putRequest(r)
 		}
 
@@ -62,8 +55,6 @@ func FakeService(t *testing.T, host string) *httptest.Server {
 			t.Fatal(err)
 		}
 	}
-	return &httptest.Server{
-		Listener: listener,
-		Config:   &http.Server{Handler: http.HandlerFunc(handler)},
-	}
+
+	return FakeService(t, host, http.HandlerFunc(handler))
 }

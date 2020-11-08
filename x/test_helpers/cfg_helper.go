@@ -1,22 +1,27 @@
-package cfg
+package testhelpers
 
 import (
 	"bytes"
 
+	"github.com/soldatov-s/accp/internal/cfg"
+	"github.com/soldatov-s/accp/internal/httpproxy"
+	"github.com/soldatov-s/accp/internal/introspection"
+	"github.com/soldatov-s/accp/internal/logger"
 	"github.com/spf13/viper"
 )
 
 const (
-	loggerConfig = `
+	LoggerConfig = `
 logger:
   nocoloredoutput: true
   withtrace: false
   level: debug
 `
-
-	intropsectorConfig = `
+	IntrospectorHost   = `localhost:8001`
+	IntrospectorDSN    = `http://` + IntrospectorHost
+	IntropsectorConfig = `
 introspector:
-  dsn: http://localhost:8001
+  dsn: ` + IntrospectorDSN + `
   endpoint: /oauth2/introspect
   contenttype: application/x-www-form-urlencoded
   method: POST
@@ -28,7 +33,7 @@ introspector:
   pooltimeout: 10s
 `
 
-	proxyConfig = `proxy:
+	ProxyConfig = `proxy:
   listen: 0.0.0.0:9000
   hydration:
     requestid: true
@@ -48,19 +53,19 @@ introspector:
           parameters:
             limits:
               token:
-                counter: 1000
-                pt: 1m
+                counter: 1
+                pt: 3s
               ip:
-                counter: 1000
-                pt: 1m
+                counter: 1
+                pt: 3s
               deviceid:
                 header: [device-id]
                 cookie: [device-id]
-                counter: 1000
+                counter: 1
                 pt: 1m # cache auto update period
             refresh:
-              count: 100
-              time: 2m
+              count: 2
+              time: 3s
             cache:
               memory:
                 ttl: 30s
@@ -100,31 +105,58 @@ introspector:
 func LoadTestYAML() error {
 	viper.SetConfigType("yaml")
 
-	if err := viper.MergeConfig(bytes.NewBuffer([]byte(loggerConfig))); err != nil {
+	if err := viper.MergeConfig(bytes.NewBuffer([]byte(LoggerConfig))); err != nil {
 		return err
 	}
 
-	if err := viper.MergeConfig(bytes.NewBuffer([]byte(intropsectorConfig))); err != nil {
+	if err := viper.MergeConfig(bytes.NewBuffer([]byte(IntropsectorConfig))); err != nil {
 		return err
 	}
 
-	if err := viper.MergeConfig(bytes.NewBuffer([]byte(proxyConfig))); err != nil {
+	if err := viper.MergeConfig(bytes.NewBuffer([]byte(ProxyConfig))); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func LoadTestConfig() (*Configuration, error) {
-	cfg := &Configuration{}
+func LoadTestConfigLogger() (*logger.Config, error) {
+	var lc *logger.Config
+	if err := viper.UnmarshalKey("logger", &lc); err != nil {
+		return nil, err
+	}
+
+	return lc, nil
+}
+
+func LoadTestConfigIntrospector() (*introspection.Config, error) {
+	var ic *introspection.Config
+	if err := viper.UnmarshalKey("introspector", &ic); err != nil {
+		return nil, err
+	}
+
+	return ic, nil
+}
+
+func LoadTestConfigProxy() (*httpproxy.Config, error) {
+	var pc *httpproxy.Config
+	if err := viper.UnmarshalKey("proxy", &pc); err != nil {
+		return nil, err
+	}
+
+	return pc, nil
+}
+
+func LoadTestConfig() (*cfg.Configuration, error) {
+	c := &cfg.Configuration{}
 
 	if err := LoadTestYAML(); err != nil {
 		return nil, err
 	}
 
-	if err := cfg.parse(); err != nil {
+	if err := c.Parse(); err != nil {
 		return nil, err
 	}
 
-	return cfg, nil
+	return c, nil
 }
