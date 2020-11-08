@@ -335,7 +335,7 @@ func (p *HTTPProxy) waitAnswer(w http.ResponseWriter, r *http.Request, hk string
 	http.Error(w, "failed to get data from cache", http.StatusServiceUnavailable)
 }
 
-func (p *HTTPProxy) GetHandler(route *Route, w http.ResponseWriter, r *http.Request) {
+func (p *HTTPProxy) CachedHandler(route *Route, w http.ResponseWriter, r *http.Request) {
 	hk, err := p.hashKey(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
@@ -415,8 +415,8 @@ func (p *HTTPProxy) GetHandler(route *Route, w http.ResponseWriter, r *http.Requ
 	}
 }
 
-// DefaultHandler is handler for proxy requests to excluded routes and routes whitch not need to cache
-func (p *HTTPProxy) DefaultHandler(route *Route, w http.ResponseWriter, r *http.Request) {
+// NonCachedHandler is handler for proxy requests to excluded routes and routes whitch not need to cache
+func (p *HTTPProxy) NonCachedHandler(route *Route, w http.ResponseWriter, r *http.Request) {
 	// Proxy request to backend
 	client := route.Pool.GetFromPool()
 
@@ -450,7 +450,7 @@ func (p *HTTPProxy) proxyHandler(w http.ResponseWriter, r *http.Request) {
 	// Handle excluded routes
 	route := p.FindExcludedRouteByHTTPRequest(r)
 	if route != nil {
-		p.DefaultHandler(route, w, r)
+		p.NonCachedHandler(route, w, r)
 		return
 	}
 
@@ -478,12 +478,7 @@ func (p *HTTPProxy) proxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	switch r.Method {
-	case http.MethodGet:
-		p.GetHandler(route, w, r)
-	default:
-		p.DefaultHandler(route, w, r)
-	}
+	p.CachedHandler(route, w, r)
 }
 
 func (p *HTTPProxy) hashKey(r *http.Request) (string, error) {

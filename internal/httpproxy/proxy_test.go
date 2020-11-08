@@ -133,7 +133,7 @@ func TestHTTPProxy_DefaultHandler(t *testing.T) {
 	t.Logf("route value %+v", route)
 
 	w := httptest.NewRecorder()
-	p.DefaultHandler(route, w, r)
+	p.NonCachedHandler(route, w, r)
 
 	resp := w.Result()
 	body, _ := ioutil.ReadAll(resp.Body)
@@ -183,7 +183,7 @@ func TestHTTPProxy_GetHandler(t *testing.T) {
 	t.Logf("route value %+v", route)
 
 	w := httptest.NewRecorder()
-	p.GetHandler(route, w, r)
+	p.CachedHandler(route, w, r)
 
 	resp := w.Result()
 	body, _ := ioutil.ReadAll(resp.Body)
@@ -192,4 +192,17 @@ func TestHTTPProxy_GetHandler(t *testing.T) {
 	t.Log(resp.StatusCode)
 	t.Log(resp.Header.Get("Content-Type"))
 	t.Log(string(body))
+
+	t.Log("take answer from cache")
+	w = httptest.NewRecorder()
+	p.CachedHandler(route, w, r)
+
+	resp = w.Result()
+	body, _ = ioutil.ReadAll(resp.Body)
+	defer resp.Body.Close()
+
+	t.Log(resp.StatusCode)
+	t.Log(resp.Header.Get("Content-Type"))
+	t.Log(string(body))
+
 }

@@ -370,5 +370,8 @@ func (r *Route) RefreshHandler() {
 
 // Publish publishes request from client to message queue
 func (r *Route) Publish(message interface{}) error {
+	if r.Publisher == nil {
+		return nil
+	}
 	return r.Publisher.SendMessage(message, r.parameters.PublishKeyRoute)
 }
