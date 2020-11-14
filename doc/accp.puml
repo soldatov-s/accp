@@ -2,6 +2,7 @@
 rectangle "client" as client
 rectangle "introspector" as introspector
 rectangle "backend" as backend
+queue "business analitic queue" <<rabbitmq>> as rabbitmq
 
 database "accp-redis" <<redis>> as redis {
     rectangle "external cache" as external_cache
@@ -18,10 +19,11 @@ frame accp {
 introspector_interface <-down-> introspector
 external_cache_interface <-down-> external_cache
 
-client <-> introspector_interface
+client <-right-> introspector_interface
 introspector_interface <-> limiter
 limiter <-> inmemory_cache
-limiter <-down-> limits_states
+limiter <-down--> limits_states
 inmemory_cache <-> external_cache_interface
+inmemory_cache <-down-> rabbitmq
 external_cache_interface <-> backend
 @enduml
