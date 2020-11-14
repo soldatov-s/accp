@@ -2,9 +2,12 @@ package httpproxy_test
 
 import (
 	"io/ioutil"
+	"math/rand"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
+	"time"
 
 	context "github.com/soldatov-s/accp/internal/ctx"
 	"github.com/soldatov-s/accp/internal/httpproxy"
@@ -204,5 +207,69 @@ func TestHTTPProxy_GetHandler(t *testing.T) {
 	t.Log(resp.StatusCode)
 	t.Log(resp.Header.Get("Content-Type"))
 	t.Log(string(body))
+}
 
+func TestMultipleClienRequests(t *testing.T) {
+	workers := 10
+
+	barrier := make(chan struct{})
+	errorsCh := make(chan error, workers)
+
+	server := testProxyHelpers.FakeBackendService(t, "localhost:9090")
+	server.Start()
+	defer server.Close()
+
+	p := initProxy(t)
+
+	r, err := http.NewRequest("GET", "/api/v1/users", nil)
+	require.Nil(t, err)
+
+	route := p.FindRouteByHTTPRequest(r)
+	require.NotNil(t, route)
+
+	var wg sync.WaitGroup
+	go func() {
+		for w := 0; w < workers; w++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				// nolint
+				time.Sleep(time.Duration(rand.Intn(100)) * time.Millisecond)
+				// all workers will block here until the for loop above has launched all the worker go-routines
+				// this is to ensure we fire all the workers off at the same
+				<-barrier
+
+				t.Log("take answer from cache")
+				w := httptest.NewRecorder()
+				p.CachedHandler(route, w, r)
+
+				resp := w.Result()
+				body, _ := ioutil.ReadAll(resp.Body)
+				defer resp.Body.Close()
+
+				t.Log(resp.StatusCode)
+				t.Log(resp.Header.Get("Content-Type"))
+				t.Log(string(body))
+
+				errorsCh <- err
+			}()
+		}
+
+		// wait until all workers have completed their work
+		wg.Wait()
+		close(errorsCh)
+	}()
+
+	// let the race begin!
+	// all worker go-routines will now attempt to hit the "CachedHandler" method
+	close(barrier)
+
+	var successCount int
+	for err := range errorsCh {
+		if err != nil {
+			t.Errorf("failed: %s", err)
+		} else {
+			successCount++
+		}
+	}
 }

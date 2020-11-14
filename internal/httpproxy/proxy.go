@@ -478,6 +478,13 @@ func (p *HTTPProxy) proxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// https://www.w3.org/Protocols/rfc2616/rfc2616-sec9.html
+	// The methods POST, PATCH are not idempotent
+	if r.Method != http.MethodPost && r.Method != http.MethodPatch {
+		p.NonCachedHandler(route, w, r)
+		return
+	}
+
 	p.CachedHandler(route, w, r)
 }
 
