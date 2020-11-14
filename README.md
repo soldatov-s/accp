@@ -19,6 +19,6 @@ Multiple clients asynchronous send identical requests to ACCP, it's reorganizes 
 ACCP passes to back service only first request and all next requests wait answer from first request.
 
 ## Architecture
-![accp-arhitecture](http://www.plantuml.com/plantuml/proxy?cache=no&src=https://raw.githubusercontent.com/soldatov-s/accp/alfa/doc/accp.puml?token=ALAUH2DWQLAWV54PN5ECZBK7WAKOA)
+![accp-arhitecture](http://www.plantuml.com/plantuml/proxy?cache=no&src=https://raw.githubusercontent.com/soldatov-s/accp/alfa/doc/accp.puml?token=ALAUH2AQ2LEAFIN5EYN4SAK7WAND6)
 
   
