@@ -8,4 +8,4 @@ In some case this approach is not enouth. It is not necessary delete cache, more
 by some conditions. For example refreshing cache by TTL or by count requests.
 
 ## Architecture
-![accp-arhitecture](http://www.plantuml.com/plantuml/proxy?cache=no&src=https://raw.githubusercontent.com/soldatov-s/accp/master/doc/accp.puml)
+![accp-arhitecture](http://www.plantuml.com/plantuml/proxy?cache=no&src=https://raw.githubusercontent.com/soldatov-s/accp/alfa/doc/accp.puml?token=ALAUH2DWQLAWV54PN5ECZBK7WAKOA)
