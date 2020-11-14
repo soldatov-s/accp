@@ -1,0 +1,27 @@
+@startuml accp
+rectangle "client" as client
+rectangle "introspector" as introspector
+rectangle "backend" as backend
+
+database "accp-redis" <<redis>> as redis {
+    rectangle "external cache" as external_cache
+    rectangle "limits states" as limits_states
+}
+
+frame accp {
+    rectangle "introspection" as introspector_interface
+    rectangle "limiter" as limiter
+    rectangle "in memory cache" as inmemory_cache
+    rectangle "external cache" as external_cache_interface
+}
+
+introspector_interface <-down-> introspector
+external_cache_interface <-down-> external_cache
+
+client <-> introspector_interface
+introspector_interface <-> limiter
+limiter <-> inmemory_cache
+limiter <-down-> limits_states
+inmemory_cache <-> external_cache_interface
+external_cache_interface <-> backend
+@enduml
