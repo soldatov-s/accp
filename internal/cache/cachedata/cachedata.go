@@ -9,6 +9,7 @@ import (
 type CacheData interface {
 	encoding.BinaryMarshaler
 	encoding.BinaryUnmarshaler
+	GetStatusCode() int
 }
 
 // CacheItem is an item of cache

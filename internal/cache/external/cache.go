@@ -105,10 +105,12 @@ func (c *Cache) Select(key string) (cachedata.CacheData, error) {
 	if err != nil {
 		return nil, cacheerrs.ErrNotFoundInCache
 	}
-
-	err = c.externalStorage.Expire(c.cfg.KeyPrefix+key, c.cfg.TTL)
-	if err != nil {
-		return nil, cacheerrs.ErrNotFoundInCache
+	// Not prolongate errors code
+	if data.Data.GetStatusCode() < 400 {
+		err = c.externalStorage.Expire(c.cfg.KeyPrefix+key, c.cfg.TTL)
+		if err != nil {
+			return nil, cacheerrs.ErrNotFoundInCache
+		}
 	}
 
 	c.log.Debug().Msgf("select %s from cache", key)

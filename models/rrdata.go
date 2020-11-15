@@ -60,6 +60,10 @@ func (r *RRData) UnmarshalBinary(data []byte) error {
 	return nil
 }
 
+func (r *RRData) GetStatusCode() int {
+	return r.Response.StatusCode
+}
+
 func (r *RRData) Update(client *httpclient.Client) error {
 	req, err := r.Request.BuildRequest()
 	if err != nil {

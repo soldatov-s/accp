@@ -80,7 +80,10 @@ func (c *Cache) Add(key string, data cachedata.CacheData) error {
 func (c *Cache) Select(key string) (cachedata.CacheData, error) {
 	if v, ok := c.Load(key); ok {
 		dd := v.(*cachedata.CacheItem)
-		dd.TimeStamp = time.Now().UTC()
+		// Not prolongate errors code
+		if dd.Data.GetStatusCode() < 400 {
+			dd.TimeStamp = time.Now().UTC()
+		}
 		c.log.Debug().Msgf("select %s from cache", key)
 		return dd.Data, nil
 	}
