@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"sort"
@@ -335,6 +336,18 @@ func (p *HTTPProxy) waitAnswer(w http.ResponseWriter, r *http.Request, hk string
 	http.Error(w, "failed to get data from cache", http.StatusServiceUnavailable)
 }
 
+func errResponse(error string, code int) *http.Response {
+	resp := &http.Response{
+		StatusCode: code,
+		Body:       ioutil.NopCloser(bytes.NewBufferString(error)),
+	}
+
+	resp.Header.Set("Content-Type", "text/plain; charset=utf-8")
+	resp.Header.Set("X-Content-Type-Options", "nosniff")
+
+	return resp
+}
+
 func (p *HTTPProxy) CachedHandler(route *Route, w http.ResponseWriter, r *http.Request) {
 	hk, err := p.hashKey(r)
 	if err != nil {
@@ -369,16 +382,16 @@ func (p *HTTPProxy) CachedHandler(route *Route, w http.ResponseWriter, r *http.R
 			// Proxy request to backend
 			client := route.Pool.GetFromPool()
 
+			var resp *http.Response
 			r.URL, err = url.Parse(route.Parameters.DSN + r.URL.String())
 			if err != nil {
-				http.Error(w, err.Error(), http.StatusServiceUnavailable)
-				return
-			}
-
-			resp, err := client.Do(r)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusServiceUnavailable)
-				return
+				resp = errResponse(err.Error(), http.StatusServiceUnavailable)
+			} else {
+				// nolint
+				resp, err = client.Do(r)
+				if err != nil {
+					resp = errResponse(err.Error(), http.StatusServiceUnavailable)
+				}
 			}
 			defer resp.Body.Close()
 
@@ -394,7 +407,7 @@ func (p *HTTPProxy) CachedHandler(route *Route, w http.ResponseWriter, r *http.R
 			}
 
 			if err := rrData.Response.Write(w); err != nil {
-				p.log.Err(err).Msg("failed to write data from response")
+				p.log.Err(err).Msg("failed to write data to client from response")
 			}
 
 			// Save answer to mem cache
