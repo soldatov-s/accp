@@ -64,14 +64,14 @@ introspector:
                 counter: 1
                 pt: 1m # cache auto update period
             refresh:
-              count: 2
-              time: 3s
+              count: 10
+              time: 10s
             cache:
               memory:
-                ttl: 30s
+                ttl: 2s
               external:
                 keyprefix: users_
-                ttl: 60s
+                ttl: 30s
           excluded:
             - search
     /api/v1/users:
@@ -97,8 +97,11 @@ introspector:
           count: 100
           time: 2m
         cache:
-          memoryttl: 30s
-          externalttl: 60s
+          memory:
+            ttl: 2s
+          external:
+            keyprefix: users_
+            ttl: 30s
 `
 )
 

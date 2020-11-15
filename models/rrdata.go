@@ -79,7 +79,7 @@ func (r *RRData) Update(client *httpclient.Client) error {
 
 func (r *RRData) LoadRefreshCounter(hk string, externalStorage *external.Cache) error {
 	if externalStorage != nil {
-		if err := externalStorage.JSONGet(hk, "refreshcounter", &r.Refresh.Counter); err != nil {
+		if err := externalStorage.JSONGet(hk, "RefreshCounter", &r.Refresh.Counter); err != nil {
 			return err
 		}
 	}
@@ -94,7 +94,7 @@ func (r *RRData) UpdateRefreshCounter(hk string, externalStorage *external.Cache
 			return err
 		}
 
-		if err := externalStorage.JSONSet(hk, "refreshcounter", string(data)); err != nil {
+		if err := externalStorage.JSONSet(hk, "RefreshCounter", string(data)); err != nil {
 			return err
 		}
 	}

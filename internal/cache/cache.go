@@ -70,25 +70,25 @@ func (c *Cache) Add(key string, data cachedata.CacheData) error {
 	return nil
 }
 
-func (c *Cache) Select(key string) (cachedata.CacheData, error) {
-	if data, err := c.Mem.Select(key); err == nil {
-		return data, nil
+func (c *Cache) Select(key string, value interface{}) error {
+	if err := c.Mem.Select(key, value); err == nil {
+		return nil
 	} else if err != cacheerrs.ErrNotFoundInCache {
-		return nil, err
+		return err
 	}
 
 	if c.External == nil {
-		return nil, cacheerrs.ErrNotFoundInCache
+		return cacheerrs.ErrNotFoundInCache
 	}
 
-	data, err := c.External.Select(key)
+	err := c.External.Select(key, value)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	if err := c.Mem.Add(key, data); err != nil {
-		return nil, err
+	if err := c.Mem.Add(key, value); err != nil {
+		return err
 	}
 
-	return data, nil
+	return nil
 }

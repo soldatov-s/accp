@@ -14,6 +14,6 @@ type CacheData interface {
 
 // CacheItem is an item of cache
 type CacheItem struct {
-	Data      CacheData
+	Data      interface{}
 	TimeStamp time.Time
 }

@@ -94,28 +94,20 @@ func (c *Cache) Add(key string, data cachedata.CacheData) error {
 		return err
 	}
 
-	c.log.Debug().Msgf("add key %s to cache", key)
+	c.log.Debug().Msgf("add key %s to external cache", key)
 
 	return nil
 }
 
-func (c *Cache) Select(key string) (cachedata.CacheData, error) {
-	var data cachedata.CacheItem
-	err := c.externalStorage.Select(c.cfg.KeyPrefix+key, &data)
+func (c *Cache) Select(key string, data interface{}) error {
+	err := c.externalStorage.Select(c.cfg.KeyPrefix+key, data)
 	if err != nil {
-		return nil, cacheerrs.ErrNotFoundInCache
-	}
-	// Not prolongate errors code
-	if data.Data.GetStatusCode() < 400 {
-		err = c.externalStorage.Expire(c.cfg.KeyPrefix+key, c.cfg.TTL)
-		if err != nil {
-			return nil, cacheerrs.ErrNotFoundInCache
-		}
+		return cacheerrs.ErrNotFoundInCache
 	}
 
-	c.log.Debug().Msgf("select %s from cache", key)
+	c.log.Debug().Msgf("select %s from external cache", key)
 
-	return data.Data, nil
+	return nil
 }
 
 func (c *Cache) Update(key string, data cachedata.CacheData) error {
@@ -124,7 +116,7 @@ func (c *Cache) Update(key string, data cachedata.CacheData) error {
 		return err
 	}
 
-	c.log.Debug().Msgf("update key %s in cache", key)
+	c.log.Debug().Msgf("update key %s in external cache", key)
 
 	return nil
 }
@@ -135,7 +127,7 @@ func (c *Cache) JSONGet(key, path string, value interface{}) error {
 		return err
 	}
 
-	c.log.Debug().Msgf("jsonget %s:%s from cache", key, path)
+	c.log.Debug().Msgf("jsonget %s:%s from external cache", key, path)
 
 	return nil
 }
@@ -146,7 +138,7 @@ func (c *Cache) JSONSet(key, path, json string) error {
 		return err
 	}
 
-	c.log.Debug().Msgf("jsonset %s:%s to cache", key, path)
+	c.log.Debug().Msgf("jsonset %s:%s to external cache", key, path)
 
 	return nil
 }
@@ -157,7 +149,7 @@ func (c *Cache) JSONSetNX(key, path, json string) error {
 		return err
 	}
 
-	c.log.Debug().Msgf("jsonset %s:%s to cache", key, path)
+	c.log.Debug().Msgf("jsonset %s:%s to external cache", key, path)
 
 	return nil
 }

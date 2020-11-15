@@ -34,7 +34,7 @@ func startRedis() (*dockertest.Resource, error) {
 		return nil, errors.Wrap(err, "Could not connect to docker")
 	}
 
-	resource, err := pool.Run("redis", "alpine3.12", []string{"ALLOW_EMPTY_PASSWORD=yes"})
+	resource, err := pool.Run("redislabs/rejson", "1.0.6", []string{"ALLOW_EMPTY_PASSWORD=yes"})
 	if err == nil {
 		resources = append(resources, resource)
 	}

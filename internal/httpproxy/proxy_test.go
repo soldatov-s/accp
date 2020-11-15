@@ -9,14 +9,54 @@ import (
 	"testing"
 	"time"
 
+	"github.com/soldatov-s/accp/internal/cache/external"
 	context "github.com/soldatov-s/accp/internal/ctx"
 	"github.com/soldatov-s/accp/internal/httpproxy"
 	"github.com/soldatov-s/accp/internal/introspection"
+	externalcache "github.com/soldatov-s/accp/internal/redis"
+	"github.com/soldatov-s/accp/x/dockertest"
 	testhelpers "github.com/soldatov-s/accp/x/test_helpers"
 	testProxyHelpers "github.com/soldatov-s/accp/x/test_helpers/proxy"
+	resilience "github.com/soldatov-s/accp/x/test_helpers/resilence"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func initExternalCache(t *testing.T) *externalcache.RedisClient {
+	lc, err := testhelpers.LoadTestConfigLogger()
+	require.Nil(t, err)
+
+	ctx := context.NewContext()
+	ctx.InitilizeLogger(lc)
+
+	dsn, err := dockertest.RunRedis()
+	require.Nil(t, err)
+
+	t.Logf("Connecting to redis: %s", dsn)
+
+	ec := &externalcache.RedisConfig{
+		DSN:                   dsn,
+		MinIdleConnections:    10,
+		MaxOpenedConnections:  30,
+		MaxConnectionLifetime: 30 * time.Second,
+	}
+
+	var externalStorage *externalcache.RedisClient
+	err = resilience.Retry(
+		t,
+		time.Second*5,
+		time.Minute*5,
+		func() (err error) {
+			externalStorage, err = externalcache.NewRedisClient(ctx, ec)
+			return err
+		},
+	)
+	require.Nil(t, err)
+	require.NotNil(t, externalStorage)
+	t.Logf("Connected to redis: %s", dsn)
+
+	return externalStorage
+}
 
 func initProxy(t *testing.T) *httpproxy.HTTPProxy {
 	err := testhelpers.LoadTestYAML()
@@ -207,6 +247,61 @@ func TestHTTPProxy_GetHandler(t *testing.T) {
 	t.Log(resp.StatusCode)
 	t.Log(resp.Header.Get("Content-Type"))
 	t.Log(string(body))
+}
+
+func TestHTTPProxy_GetHandlerExternalCache(t *testing.T) {
+	server := testProxyHelpers.FakeBackendService(t, "localhost:9090")
+	server.Start()
+	defer server.Close()
+
+	p := initProxy(t)
+
+	r, err := http.NewRequest("GET", "/api/v1/users", nil)
+	require.Nil(t, err)
+
+	route := p.FindRouteByHTTPRequest(r)
+	require.NotNil(t, route)
+
+	lc, err := testhelpers.LoadTestConfigLogger()
+	require.Nil(t, err)
+
+	ctx := context.NewContext()
+	ctx.InitilizeLogger(lc)
+
+	route.Cache.External, err = external.NewCache(ctx, route.Parameters.Cache.External, initExternalCache(t))
+	require.Nil(t, err)
+
+	w := httptest.NewRecorder()
+	p.CachedHandler(route, w, r)
+
+	resp := w.Result()
+	body, _ := ioutil.ReadAll(resp.Body)
+	defer resp.Body.Close()
+
+	t.Log(resp.StatusCode)
+	t.Log(resp.Header.Get("Content-Type"))
+	t.Log(string(body))
+
+	// Sleep, inmemory cache invalidates
+	t.Log("sleep, inmemory cache invalidates")
+	time.Sleep(5 * time.Second)
+
+	r, err = http.NewRequest("GET", "/api/v1/users", nil)
+	require.Nil(t, err)
+
+	t.Log("take answer from cache")
+	w = httptest.NewRecorder()
+	p.CachedHandler(route, w, r)
+
+	resp = w.Result()
+	body, _ = ioutil.ReadAll(resp.Body)
+	defer resp.Body.Close()
+
+	t.Log(resp.StatusCode)
+	t.Log(resp.Header.Get("Content-Type"))
+	t.Log(string(body))
+
+	dockertest.KillAllDockers()
 }
 
 func TestMultipleClienRequests(t *testing.T) {

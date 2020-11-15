@@ -65,7 +65,7 @@ func NewCache(ctx *context.Context, cfg *CacheConfig) (*Cache, error) {
 	return c, nil
 }
 
-func (c *Cache) Add(key string, data cachedata.CacheData) error {
+func (c *Cache) Add(key string, data interface{}) error {
 	if _, ok := c.Load(key); !ok {
 		c.Store(key, &cachedata.CacheItem{
 			Data:      data,
@@ -77,18 +77,14 @@ func (c *Cache) Add(key string, data cachedata.CacheData) error {
 	return nil
 }
 
-func (c *Cache) Select(key string) (cachedata.CacheData, error) {
+func (c *Cache) Select(key string, value interface{}) error {
 	if v, ok := c.Load(key); ok {
-		dd := v.(*cachedata.CacheItem)
-		// Not prolongate errors code
-		if dd.Data.GetStatusCode() < 400 {
-			dd.TimeStamp = time.Now().UTC()
-		}
+		value = v
 		c.log.Debug().Msgf("select %s from cache", key)
-		return dd.Data, nil
+		return nil
 	}
 
-	return nil, cacheerrs.ErrNotFoundInCache
+	return cacheerrs.ErrNotFoundInCache
 }
 
 func (c *Cache) Size() int {

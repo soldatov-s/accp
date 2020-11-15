@@ -300,15 +300,10 @@ func (p *HTTPProxy) refresh(rrdata *accpmodels.RRData, hk string, route *Route) 
 	}
 }
 
-func (p *HTTPProxy) responseHandle(data interface{}, w http.ResponseWriter, r *http.Request, hk string, route *Route) {
-	rrdata, ok := data.(*accpmodels.RRData)
-	if !ok {
-		p.log.Error().Msg("failed to convert data from cache to RRData")
-		return
-	}
-
+func (p *HTTPProxy) responseHandle(rrdata *accpmodels.RRData, w http.ResponseWriter, r *http.Request, hk string, route *Route) {
 	// If get rrdata from redis, request will be empty
 	if rrdata.Request == nil {
+		rrdata.Request = &accpmodels.Request{}
 		if err := rrdata.Request.Read(r); err != nil {
 			p.log.Err(err).Msg("failed to read data from request")
 		}
@@ -328,8 +323,9 @@ func (p *HTTPProxy) responseHandle(data interface{}, w http.ResponseWriter, r *h
 func (p *HTTPProxy) waitAnswer(w http.ResponseWriter, r *http.Request, hk string, ch chan struct{}, route *Route) {
 	<-ch
 
-	if data, err := route.Cache.Select(hk); err == nil {
-		p.responseHandle(data, w, r, hk, route)
+	var data accpmodels.RRData
+	if err := route.Cache.Select(hk, &data); err == nil {
+		p.responseHandle(&data, w, r, hk, route)
 		return
 	}
 
@@ -342,6 +338,7 @@ func errResponse(error string, code int) *http.Response {
 		Body:       ioutil.NopCloser(bytes.NewBufferString(error)),
 	}
 
+	resp.Header = make(http.Header)
 	resp.Header.Set("Content-Type", "text/plain; charset=utf-8")
 	resp.Header.Set("X-Content-Type-Options", "nosniff")
 
@@ -356,8 +353,9 @@ func (p *HTTPProxy) CachedHandler(route *Route, w http.ResponseWriter, r *http.R
 	}
 
 	// Finding a response to a request in the memory cache
-	if data, err := route.Cache.Select(hk); err == nil {
-		p.responseHandle(data, w, r, hk, route)
+	var data accpmodels.RRData
+	if err1 := route.Cache.Select(hk, &data); err1 == nil {
+		p.responseHandle(&data, w, r, hk, route)
 		return
 	}
 

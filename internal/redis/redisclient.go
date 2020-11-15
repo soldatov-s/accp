@@ -36,8 +36,11 @@ func NewRedisClient(ctx *context.Context, cfg *RedisConfig) (*RedisClient, error
 	connOptions.MinIdleConns = cfg.MinIdleConnections
 	connOptions.PoolSize = cfg.MaxOpenedConnections
 
-	r := &RedisClient{Client: rejonson.ExtendClient(redis.NewClient(connOptions))}
-	if r.Ping().Err() != nil {
+	client := redis.NewClient(connOptions)
+	extClient := rejonson.ExtendClient(client)
+
+	r := &RedisClient{Client: extClient}
+	if err := r.Ping().Err(); err != nil {
 		return nil, err
 	}
 
