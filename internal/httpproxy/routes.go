@@ -69,12 +69,17 @@ type RouteParameters struct {
 	Refresh         *RefreshConfig
 	Cache           *cache.Config
 	Pool            *httpclient.PoolConfig
+	Methods         Arguments
 	PublishKeyRoute string
 	// Introspect if true it means that necessary to introspect request
 	Introspect bool
 }
 
 func (rp *RouteParameters) Initilize() error {
+	if len(rp.Methods) == 0 {
+		rp.Methods = Arguments{http.MethodGet, http.MethodPut, http.MethodDelete}
+	}
+
 	if rp.Cache == nil {
 		rp.Cache = &cache.Config{}
 	}
@@ -122,10 +127,15 @@ func (rp *RouteParameters) Merge(target *RouteParameters) *RouteParameters {
 		Limits:          rp.Limits,
 		PublishKeyRoute: rp.PublishKeyRoute,
 		Introspect:      rp.Introspect,
+		Methods:         rp.Methods,
 	}
 
 	if target == nil {
 		return result
+	}
+
+	if len(target.Methods) > 0 {
+		result.Methods = target.Methods
 	}
 
 	if target.Introspect {
@@ -187,7 +197,7 @@ type RouteConfig struct {
 type Route struct {
 	ctx            *context.Context
 	log            zerolog.Logger
-	parameters     *RouteParameters
+	Parameters     *RouteParameters
 	Routes         map[string]*Route
 	Cache          *cache.Cache
 	Pool           *httpclient.Pool
@@ -210,7 +220,7 @@ func (r *Route) Initilize(
 	var err error
 	r.ctx = ctx
 	r.log = ctx.GetPackageLogger(empty{})
-	r.parameters = parameters
+	r.Parameters = parameters
 
 	r.Cache = &cache.Cache{}
 
@@ -239,7 +249,7 @@ func (r *Route) Initilize(
 
 	// Load limits
 	r.Limits = make(map[string]LimitTable)
-	for k := range r.parameters.Limits {
+	for k := range r.Parameters.Limits {
 		r.Limits[k] = make(LimitTable)
 	}
 
@@ -255,7 +265,7 @@ func (r *Route) InitilizeExcluded(
 ) {
 	r.ctx = ctx
 	r.log = ctx.GetPackageLogger(empty{})
-	r.parameters = parameters
+	r.Parameters = parameters
 	r.Pool = httpclient.NewPool(parameters.Pool.Size, parameters.Pool.Timeout)
 	r.Route = route
 }
@@ -263,7 +273,7 @@ func (r *Route) InitilizeExcluded(
 func (r *Route) GetLimitsFromRequest(req *http.Request) map[string]interface{} {
 	limitList := make(map[string]interface{})
 
-	for k, v := range r.parameters.Limits {
+	for k, v := range r.Parameters.Limits {
 		for _, vv := range v.Header {
 			if h := req.Header.Get(vv); h != "" {
 				if vv == "Authorization" {
@@ -296,7 +306,7 @@ func (r *Route) GetLimitsFromRequest(req *http.Request) map[string]interface{} {
 func (r *Route) CheckLimits(req *http.Request) (*bool, error) {
 	result := true
 
-	if len(r.parameters.Limits) == 0 {
+	if len(r.Parameters.Limits) == 0 {
 		return &result, nil
 	}
 
@@ -324,11 +334,11 @@ func (r *Route) CheckLimits(req *http.Request) (*bool, error) {
 
 			vv.Counter++
 
-			if vv.Counter >= r.parameters.Limits[k].Counter &&
-				time.Now().Add(-r.parameters.Limits[k].PT).Unix() < vv.LastAccess {
+			if vv.Counter >= r.Parameters.Limits[k].Counter &&
+				time.Now().Add(-r.Parameters.Limits[k].PT).Unix() < vv.LastAccess {
 				result = result && false
 				r.log.Debug().Msgf("limit reached: %s", k)
-			} else if time.Now().Add(-r.parameters.Limits[k].PT).Unix() >= vv.LastAccess {
+			} else if time.Now().Add(-r.Parameters.Limits[k].PT).Unix() >= vv.LastAccess {
 				vv.Counter = 1
 				vv.LastAccess = time.Now().Unix()
 				go func() {
@@ -365,7 +375,7 @@ func (r *Route) RefreshHandler() {
 		return true
 	})
 
-	r.RefreshTimer.Reset(r.parameters.Refresh.Time)
+	r.RefreshTimer.Reset(r.Parameters.Refresh.Time)
 }
 
 // Publish publishes request from client to message queue
@@ -373,5 +383,5 @@ func (r *Route) Publish(message interface{}) error {
 	if r.Publisher == nil {
 		return nil
 	}
-	return r.Publisher.SendMessage(message, r.parameters.PublishKeyRoute)
+	return r.Publisher.SendMessage(message, r.Parameters.PublishKeyRoute)
 }

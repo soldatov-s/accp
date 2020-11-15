@@ -369,7 +369,7 @@ func (p *HTTPProxy) CachedHandler(route *Route, w http.ResponseWriter, r *http.R
 			// Proxy request to backend
 			client := route.Pool.GetFromPool()
 
-			r.URL, err = url.Parse(route.parameters.DSN + r.URL.String())
+			r.URL, err = url.Parse(route.Parameters.DSN + r.URL.String())
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusServiceUnavailable)
 				return
@@ -387,7 +387,7 @@ func (p *HTTPProxy) CachedHandler(route *Route, w http.ResponseWriter, r *http.R
 				p.log.Err(err).Msg("failed to read data from request")
 			}
 
-			rrData.Refresh.MaxCount = route.parameters.Refresh.Count
+			rrData.Refresh.MaxCount = route.Parameters.Refresh.Count
 
 			if err := rrData.Response.Read(resp); err != nil {
 				p.log.Err(err).Msg("failed to read data from response")
@@ -421,7 +421,7 @@ func (p *HTTPProxy) NonCachedHandler(route *Route, w http.ResponseWriter, r *htt
 	client := route.Pool.GetFromPool()
 
 	var err error
-	r.URL, err = url.Parse(route.parameters.DSN + r.URL.String())
+	r.URL, err = url.Parse(route.Parameters.DSN + r.URL.String())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
@@ -478,14 +478,11 @@ func (p *HTTPProxy) proxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// https://www.w3.org/Protocols/rfc2616/rfc2616-sec9.html
-	// The methods POST, PATCH are not idempotent
-	if r.Method != http.MethodPost && r.Method != http.MethodPatch {
-		p.NonCachedHandler(route, w, r)
+	if route.Parameters.Methods.Has(r.Method) {
+		p.CachedHandler(route, w, r)
 		return
 	}
-
-	p.CachedHandler(route, w, r)
+	p.NonCachedHandler(route, w, r)
 }
 
 func (p *HTTPProxy) hashKey(r *http.Request) (string, error) {

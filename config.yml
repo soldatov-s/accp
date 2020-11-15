@@ -40,6 +40,7 @@ proxy:
       parameters:
         introspect: true
         dsn: http://192.168.100.48:30637
+        methods: [GET, PUT, POST]
         pool:
           size: 20
           timeout: 10s
