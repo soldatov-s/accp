@@ -10,6 +10,7 @@ introspector:
   method: POST
   validmarker: '"active":true'
   bodytemplate: "token_type_hint=access_token&token={{.Token}}"
+  trimedfilds: ["exp", "iat"]
   cookiename: ["access-token"]
   queryparamname: ["access_token"]
   poolsize: 50

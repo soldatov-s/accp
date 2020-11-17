@@ -5,6 +5,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"regexp"
 	"strings"
 	"text/template"
 	"time"
@@ -33,6 +34,8 @@ type Config struct {
 	ValidMarker string
 	// BodyTmpl - teplate of body
 	BodyTemplate string
+	// TrimmedFilds - trimed fields in answer from introspector
+	TrimmedFilds []string
 	// CookieName is a list of cookie where may be stored access token
 	CookieName []string
 	// QueryParamName is a list of query parameter where may be stored access token
@@ -48,11 +51,12 @@ type Introspector interface {
 }
 
 type Introspect struct {
-	ctx      *context.Context
-	cfg      *Config
-	log      zerolog.Logger
-	bodyTmpl *template.Template
-	pool     *httpclient.Pool
+	ctx          *context.Context
+	cfg          *Config
+	log          zerolog.Logger
+	bodyTmpl     *template.Template
+	pool         *httpclient.Pool
+	reTrimFields *regexp.Regexp
 }
 
 // NewIntrospector creates Intrcopector
@@ -69,6 +73,11 @@ func NewIntrospector(ctx *context.Context, cfg *Config) (*Introspect, error) {
 	i.log = ctx.GetPackageLogger(empty{})
 
 	return i, nil
+}
+
+func (i *Introspect) initRegex() {
+	filds := strings.Join(i.cfg.TrimmedFilds, "|")
+	i.reTrimFields = regexp.MustCompile(`"(` + filds + `)":\s*("((\\"|[^"])*)"|\d*),?`)
 }
 
 // extractToken extract token from request
@@ -120,6 +129,10 @@ func (i *Introspect) extractToken(r *http.Request) (string, error) {
 	return "", ErrBadAuthRequest
 }
 
+func (i *Introspect) trimFields(content []byte) []byte {
+	return []byte(strings.ReplaceAll(i.reTrimFields.ReplaceAllString(string(content), ""), `,}`, "}"))
+}
+
 func (i *Introspect) IntrospectRequest(r *http.Request) ([]byte, error) {
 	token, err := i.extractToken(r)
 	if err != nil {
@@ -157,7 +170,7 @@ func (i *Introspect) IntrospectRequest(r *http.Request) ([]byte, error) {
 		return nil, &ErrTokenInactive{token: token}
 	}
 
-	return contents, nil
+	return i.trimFields(contents), nil
 }
 
 type tokenStruct struct {

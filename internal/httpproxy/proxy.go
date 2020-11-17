@@ -504,8 +504,10 @@ func (p *HTTPProxy) hashKey(r *http.Request) (string, error) {
 		}
 	}
 
-	p.log.Debug().Msgf("request: %s; body: %s", r.URL.RequestURI(), buf.String())
-	sum := sha256.New().Sum([]byte(r.URL.RequestURI() + buf.String()))
+	introspectBody := r.Header.Get("accp-introspect-body")
+
+	p.log.Debug().Msgf("request: %s; body: %s, introspectBody: %s", r.URL.RequestURI(), buf.String(), introspectBody)
+	sum := sha256.New().Sum([]byte(r.URL.RequestURI() + buf.String() + introspectBody))
 	return base64.URLEncoding.EncodeToString(sum), nil
 }
 
@@ -536,6 +538,7 @@ func (p *HTTPProxy) HydrationIntrospect(route *Route, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	// TODO: adds regexp for replace fields from trimedfilds (see introspector config) to empty string
 
 	var str string
 	switch p.cfg.Hydration.Introspect {
