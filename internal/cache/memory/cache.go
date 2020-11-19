@@ -77,14 +77,13 @@ func (c *Cache) Add(key string, data interface{}) error {
 	return nil
 }
 
-func (c *Cache) Select(key string, value interface{}) error {
+func (c *Cache) Select(key string) (interface{}, error) {
 	if v, ok := c.Load(key); ok {
-		value = v
-		c.log.Debug().Msgf("select %s from cache", key)
-		return nil
+		c.log.Debug().Msgf("select %s from inmemory cache", key)
+		return v.(*cachedata.CacheItem).Data, nil
 	}
 
-	return cacheerrs.ErrNotFoundInCache
+	return nil, cacheerrs.ErrNotFoundInCache
 }
 
 func (c *Cache) Size() int {

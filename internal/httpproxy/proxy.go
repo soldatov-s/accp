@@ -267,6 +267,7 @@ func (p *HTTPProxy) FindExcludedRouteByHTTPRequest(r *http.Request) *Route {
 	return p.FindExcludedRouteByPath(r.URL.Path)
 }
 
+// refresh incremets refresh count and checks that we not reached the limit
 func (p *HTTPProxy) refresh(rrdata *accpmodels.RRData, hk string, route *Route) {
 	// Check that we have refresh limit by request count
 	if rrdata.Refresh.MaxCount == 0 {
@@ -323,19 +324,18 @@ func (p *HTTPProxy) responseHandle(rrdata *accpmodels.RRData, w http.ResponseWri
 func (p *HTTPProxy) waitAnswer(w http.ResponseWriter, r *http.Request, hk string, ch chan struct{}, route *Route) {
 	<-ch
 
-	var data accpmodels.RRData
-	if err := route.Cache.Select(hk, &data); err == nil {
-		p.responseHandle(&data, w, r, hk, route)
+	if data, err := route.Cache.Select(hk); err == nil {
+		p.responseHandle(data, w, r, hk, route)
 		return
 	}
 
 	http.Error(w, "failed to get data from cache", http.StatusServiceUnavailable)
 }
 
-func errResponse(error string, code int) *http.Response {
+func errResponse(errormsg string, code int) *http.Response {
 	resp := &http.Response{
 		StatusCode: code,
-		Body:       ioutil.NopCloser(bytes.NewBufferString(error)),
+		Body:       ioutil.NopCloser(bytes.NewBufferString(errormsg)),
 	}
 
 	resp.Header = make(http.Header)
@@ -353,9 +353,8 @@ func (p *HTTPProxy) CachedHandler(route *Route, w http.ResponseWriter, r *http.R
 	}
 
 	// Finding a response to a request in the memory cache
-	var data accpmodels.RRData
-	if err1 := route.Cache.Select(hk, &data); err1 == nil {
-		p.responseHandle(&data, w, r, hk, route)
+	if data, err1 := route.Cache.Select(hk); err1 == nil {
+		p.responseHandle(data, w, r, hk, route)
 		return
 	}
 

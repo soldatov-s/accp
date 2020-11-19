@@ -5,6 +5,7 @@ import (
 	"github.com/soldatov-s/accp/internal/cache/cacheerrs"
 	"github.com/soldatov-s/accp/internal/cache/external"
 	"github.com/soldatov-s/accp/internal/cache/memory"
+	accpmodels "github.com/soldatov-s/accp/models"
 )
 
 type Config struct {
@@ -70,25 +71,26 @@ func (c *Cache) Add(key string, data cachedata.CacheData) error {
 	return nil
 }
 
-func (c *Cache) Select(key string, value interface{}) error {
-	if err := c.Mem.Select(key, value); err == nil {
-		return nil
+func (c *Cache) Select(key string) (*accpmodels.RRData, error) {
+	if v, err := c.Mem.Select(key); err == nil {
+		return v.(*accpmodels.RRData), nil
 	} else if err != cacheerrs.ErrNotFoundInCache {
-		return err
+		return nil, err
 	}
 
 	if c.External == nil {
-		return cacheerrs.ErrNotFoundInCache
+		return nil, cacheerrs.ErrNotFoundInCache
 	}
 
-	err := c.External.Select(key, value)
+	var value accpmodels.RRData
+	err := c.External.Select(key, &value)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	if err := c.Mem.Add(key, value); err != nil {
-		return err
+	if err := c.Mem.Add(key, &value); err != nil {
+		return nil, err
 	}
 
-	return nil
+	return &value, nil
 }
