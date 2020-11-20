@@ -274,6 +274,8 @@ func (p *HTTPProxy) refresh(rrdata *accpmodels.RRData, hk string, route *Route) 
 		return
 	}
 
+	p.log.Debug().Msgf("refresh cache, key %s, maxCount %d, current count %d", hk, rrdata.Refresh.MaxCount, rrdata.Refresh.Counter)
+
 	rrdata.Refresh.Mu.Lock()
 	defer rrdata.Refresh.Mu.Unlock()
 
@@ -299,6 +301,8 @@ func (p *HTTPProxy) refresh(rrdata *accpmodels.RRData, hk string, route *Route) 
 	if err := rrdata.UpdateRefreshCounter(hk, route.Cache.External); err != nil {
 		p.log.Err(err).Msg("failed to update refresh counter")
 	}
+
+	p.log.Debug().Msgf("cache refreshed")
 }
 
 func (p *HTTPProxy) responseHandle(rrdata *accpmodels.RRData, w http.ResponseWriter, r *http.Request, hk string, route *Route) {

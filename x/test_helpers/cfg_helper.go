@@ -64,7 +64,7 @@ introspector:
                 counter: 1
                 pt: 1m # cache auto update period
             refresh:
-              count: 10
+              count: 3
               time: 10s
             cache:
               memory:

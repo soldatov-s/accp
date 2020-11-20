@@ -475,3 +475,100 @@ func TestHTTPProxy_GetHandlerSendMessageToQueue(t *testing.T) {
 
 	dockertest.KillAllDockers()
 }
+
+func TestHTTPProxy_Refresh(t *testing.T) {
+	server := testProxyHelpers.FakeBackendService(t, "localhost:9090")
+	server.Start()
+	defer server.Close()
+
+	p := initProxy(t)
+
+	r, err := http.NewRequest("GET", "/api/v1/users", nil)
+	require.Nil(t, err)
+
+	route := p.FindRouteByHTTPRequest(r)
+	require.NotNil(t, route)
+
+	t.Logf("route value %+v", route)
+
+	w := httptest.NewRecorder()
+	p.CachedHandler(route, w, r)
+
+	resp := w.Result()
+	body, _ := ioutil.ReadAll(resp.Body)
+	defer resp.Body.Close()
+
+	t.Log(resp.StatusCode)
+	t.Log(resp.Header.Get("Content-Type"))
+	t.Log(string(body))
+
+	r, err = http.NewRequest("GET", "/api/v1/users", nil)
+	require.Nil(t, err)
+
+	w = httptest.NewRecorder()
+	p.CachedHandler(route, w, r)
+
+	resp = w.Result()
+	body, _ = ioutil.ReadAll(resp.Body)
+	defer resp.Body.Close()
+
+	t.Log(resp.StatusCode)
+	t.Log(resp.Header.Get("Content-Type"))
+	t.Log(string(body))
+
+	r, err = http.NewRequest("GET", "/api/v1/users", nil)
+	require.Nil(t, err)
+
+	w = httptest.NewRecorder()
+	p.CachedHandler(route, w, r)
+
+	resp = w.Result()
+	body, _ = ioutil.ReadAll(resp.Body)
+	defer resp.Body.Close()
+
+	t.Log(resp.StatusCode)
+	t.Log(resp.Header.Get("Content-Type"))
+	t.Log(string(body))
+
+	r, err = http.NewRequest("GET", "/api/v1/users", nil)
+	require.Nil(t, err)
+
+	w = httptest.NewRecorder()
+	p.CachedHandler(route, w, r)
+
+	resp = w.Result()
+	body, _ = ioutil.ReadAll(resp.Body)
+	defer resp.Body.Close()
+
+	t.Log(resp.StatusCode)
+	t.Log(resp.Header.Get("Content-Type"))
+	t.Log(string(body))
+
+	w = httptest.NewRecorder()
+	p.CachedHandler(route, w, r)
+
+	resp = w.Result()
+	body, _ = ioutil.ReadAll(resp.Body)
+	defer resp.Body.Close()
+
+	t.Log(resp.StatusCode)
+	t.Log(resp.Header.Get("Content-Type"))
+	t.Log(string(body))
+
+	time.Sleep(1 * time.Second)
+
+	r, err = http.NewRequest("GET", "/api/v1/users", nil)
+	require.Nil(t, err)
+
+	w = httptest.NewRecorder()
+	p.CachedHandler(route, w, r)
+
+	resp = w.Result()
+	bodyAfterRefresh, _ := ioutil.ReadAll(resp.Body)
+	defer resp.Body.Close()
+
+	require.NotEqual(t, body, bodyAfterRefresh)
+	t.Log(resp.StatusCode)
+	t.Log(resp.Header.Get("Content-Type"))
+	t.Log(string(bodyAfterRefresh))
+}

@@ -1,9 +1,11 @@
 package testproxyhelpers
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 const (
@@ -13,8 +15,22 @@ const (
 	DefaultPutAnswer      = `{"result":{ "answer" : "it's a put request"}}`
 )
 
+type HTTPBody struct {
+	Result struct {
+		Answer    string
+		TimeStamp time.Time
+	} `json:"result"`
+}
+
 func getRequest(_ *http.Request) (res []byte, err error) {
-	return []byte(DefaultGetAnswer), nil
+	answer := HTTPBody{}
+	answer.Result.Answer = "it's a get request"
+	answer.Result.TimeStamp = time.Now()
+	data, err := json.Marshal(&answer)
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
 }
 
 func postRequest(_ *http.Request) (res []byte, err error) {
