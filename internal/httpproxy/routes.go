@@ -63,14 +63,14 @@ func (rc *RefreshConfig) Merge(target *RefreshConfig) *RefreshConfig {
 }
 
 type RouteParameters struct {
-	DSN             string
-	TTL             time.Duration
-	Limits          map[string]*LimitConfig
-	Refresh         *RefreshConfig
-	Cache           *cache.Config
-	Pool            *httpclient.PoolConfig
-	Methods         Arguments
-	PublishKeyRoute string
+	DSN      string
+	TTL      time.Duration
+	Limits   map[string]*LimitConfig
+	Refresh  *RefreshConfig
+	Cache    *cache.Config
+	Pool     *httpclient.PoolConfig
+	Methods  Arguments
+	RouteKey string
 	// Introspect if true it means that necessary to introspect request
 	Introspect bool
 }
@@ -119,15 +119,15 @@ func (rp *RouteParameters) Initilize() error {
 
 func (rp *RouteParameters) Merge(target *RouteParameters) *RouteParameters {
 	result := &RouteParameters{
-		DSN:             rp.DSN,
-		TTL:             rp.TTL,
-		Cache:           rp.Cache,
-		Refresh:         rp.Refresh,
-		Pool:            rp.Pool,
-		Limits:          rp.Limits,
-		PublishKeyRoute: rp.PublishKeyRoute,
-		Introspect:      rp.Introspect,
-		Methods:         rp.Methods,
+		DSN:        rp.DSN,
+		TTL:        rp.TTL,
+		Cache:      rp.Cache,
+		Refresh:    rp.Refresh,
+		Pool:       rp.Pool,
+		Limits:     rp.Limits,
+		RouteKey:   rp.RouteKey,
+		Introspect: rp.Introspect,
+		Methods:    rp.Methods,
 	}
 
 	if target == nil {
@@ -177,8 +177,8 @@ func (rp *RouteParameters) Merge(target *RouteParameters) *RouteParameters {
 		}
 	}
 
-	if target.PublishKeyRoute != "" {
-		result.PublishKeyRoute = target.PublishKeyRoute
+	if target.RouteKey != "" {
+		result.RouteKey = target.RouteKey
 	}
 
 	return result
@@ -383,5 +383,5 @@ func (r *Route) Publish(message interface{}) error {
 	if r.Publisher == nil {
 		return nil
 	}
-	return r.Publisher.SendMessage(message, r.Parameters.PublishKeyRoute)
+	return r.Publisher.SendMessage(message, r.Parameters.RouteKey)
 }

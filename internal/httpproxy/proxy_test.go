@@ -13,10 +13,13 @@ import (
 	context "github.com/soldatov-s/accp/internal/ctx"
 	"github.com/soldatov-s/accp/internal/httpproxy"
 	"github.com/soldatov-s/accp/internal/introspection"
+	"github.com/soldatov-s/accp/internal/publisher"
+	"github.com/soldatov-s/accp/internal/rabbitmq"
 	externalcache "github.com/soldatov-s/accp/internal/redis"
 	"github.com/soldatov-s/accp/x/dockertest"
 	testhelpers "github.com/soldatov-s/accp/x/test_helpers"
 	testProxyHelpers "github.com/soldatov-s/accp/x/test_helpers/proxy"
+	rabbitMQConsumer "github.com/soldatov-s/accp/x/test_helpers/rabbitmq"
 	resilience "github.com/soldatov-s/accp/x/test_helpers/resilence"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -56,6 +59,41 @@ func initExternalCache(t *testing.T) *externalcache.RedisClient {
 	t.Logf("Connected to redis: %s", dsn)
 
 	return externalStorage
+}
+
+func initPublisher(t *testing.T) (string, publisher.Publisher) {
+	lc, err := testhelpers.LoadTestConfigLogger()
+	require.Nil(t, err)
+
+	ctx := context.NewContext()
+	ctx.InitilizeLogger(lc)
+
+	dsn, err := dockertest.RunRabbitMQ()
+	require.Nil(t, err)
+
+	t.Logf("Connecting to rabbitmq: %s", dsn)
+
+	ec := &rabbitmq.PublisherConfig{
+		DSN:           dsn,
+		BackoffPolicy: []time.Duration{2 * time.Second, 5 * time.Second, 10 * time.Second, 15 * time.Second, 20 * time.Second, 25 * time.Second},
+		ExchangeName:  "testout.events.dev",
+	}
+
+	var pub publisher.Publisher
+	err = resilience.Retry(
+		t,
+		time.Second*5,
+		time.Minute*5,
+		func() (err error) {
+			pub, err = rabbitmq.NewPublisher(ctx, ec)
+			return err
+		},
+	)
+	require.Nil(t, err)
+	require.NotNil(t, pub)
+	t.Logf("Connected to rabbitmq: %s", dsn)
+
+	return dsn, pub
 }
 
 func initProxy(t *testing.T) *httpproxy.HTTPProxy {
@@ -367,4 +405,73 @@ func TestMultipleClienRequests(t *testing.T) {
 			successCount++
 		}
 	}
+}
+
+func TestHTTPProxy_GetHandlerSendMessageToQueue(t *testing.T) {
+	server := testProxyHelpers.FakeBackendService(t, "localhost:9090")
+	server.Start()
+	defer server.Close()
+
+	p := initProxy(t)
+
+	r, err := http.NewRequest("GET", "/api/v1/users", nil)
+	require.Nil(t, err)
+
+	route := p.FindRouteByHTTPRequest(r)
+	require.NotNil(t, route)
+
+	lc, err := testhelpers.LoadTestConfigLogger()
+	require.Nil(t, err)
+
+	ctx := context.NewContext()
+	ctx.InitilizeLogger(lc)
+
+	var dsn string
+	dsn, route.Publisher = initPublisher(t)
+
+	consum, err := rabbitMQConsumer.CreateConsumer(dsn)
+	require.Nil(t, err)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		msgs, err1 := consum.StartConsume("testout.events.dev", "test.queue", route.Parameters.RouteKey, "tests")
+		require.Nil(t, err1)
+		wg.Done()
+
+		for d := range msgs {
+			t.Logf("Received a message: %s", d.Body)
+			require.Equal(t, []byte(`{"URL":"http://localhost:9090/api/v1/users","Method":"GET","Body":"","Header":{}}`), d.Body)
+			_ = d.Ack(true)
+		}
+	}()
+
+	wg.Wait()
+
+	w := httptest.NewRecorder()
+	p.CachedHandler(route, w, r)
+
+	resp := w.Result()
+	body, _ := ioutil.ReadAll(resp.Body)
+	defer resp.Body.Close()
+
+	t.Log(resp.StatusCode)
+	t.Log(resp.Header.Get("Content-Type"))
+	t.Log(string(body))
+
+	t.Log("take answer from cache")
+	w = httptest.NewRecorder()
+	p.CachedHandler(route, w, r)
+
+	resp = w.Result()
+	body, _ = ioutil.ReadAll(resp.Body)
+	defer resp.Body.Close()
+
+	t.Log(resp.StatusCode)
+	t.Log(resp.Header.Get("Content-Type"))
+	t.Log(string(body))
+
+	err = route.Publisher.(*rabbitmq.Publish).Shutdown()
+	require.Nil(t, err)
+
+	dockertest.KillAllDockers()
 }

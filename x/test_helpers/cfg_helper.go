@@ -46,7 +46,7 @@ introspector:
         pool:
           size: 20
           timeout: 10s
-        routkey: V1 # rabbitmq rouykey
+        routekey: V1 # rabbitmq routekey
       routes:
         # subroutes
         users:

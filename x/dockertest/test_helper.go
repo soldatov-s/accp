@@ -71,7 +71,7 @@ func startRabbitMQ() (*dockertest.Resource, error) {
 		return nil, errors.Wrap(err, "Could not connect to docker")
 	}
 
-	resource, err := pool.Run("rabbitmq", "3.8.5-management-alpine", []string{""})
+	resource, err := pool.Run("rabbitmq", "3.8.5-management-alpine", nil)
 	if err == nil {
 		resources = append(resources, resource)
 	}
@@ -85,7 +85,7 @@ func RunRabbitMQ() (string, error) {
 		return RunRabbitMQGitlabPipeline()
 	}
 
-	resource, err := startRedis()
+	resource, err := startRabbitMQ()
 	if err != nil {
 		return "", err
 	}

@@ -76,14 +76,9 @@ func (p *Publish) connectPublisher() error {
 		return err
 	}
 
-	err = p.Channel.ExchangeDeclare(p.cfg.ExchangeName, "direct", true,
+	return p.Channel.ExchangeDeclare(p.cfg.ExchangeName, "direct", true,
 		false, false,
 		false, nil)
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func (p *Publish) publishStatus() {
@@ -136,7 +131,7 @@ func (p *Publish) SendMessage(message interface{}, routingKey string) error {
 		return err
 	}
 
-	p.log.Debug().Msgf("send message: %s", string(body))
+	p.log.Debug().Msgf("exchangeName %s, routingKey %s, send message: %s", p.cfg.ExchangeName, routingKey, string(body))
 
 	err = p.Channel.Publish(p.cfg.ExchangeName, routingKey, false,
 		false, amqp.Publishing{ContentType: "text/plain", Body: body})
