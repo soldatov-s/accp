@@ -1,8 +1,9 @@
 @startuml accp
+title The architecture of Access Control Caching Proxy 
 rectangle "client" as client
 rectangle "introspector" as introspector
 rectangle "backend" as backend
-queue "business analitic queue" <<rabbitmq>> as rabbitmq
+queue "business analytic queue" <<rabbitmq>> as rabbitmq
 
 database "accp-redis" <<redis>> as redis {
     rectangle "external cache" as external_cache
@@ -24,6 +25,7 @@ introspector_interface <-> limiter
 limiter <-> inmemory_cache
 limiter <-down--> limits_states
 inmemory_cache <-> external_cache_interface
-inmemory_cache <-down-> rabbitmq
+inmemory_cache -down-> rabbitmq
 external_cache_interface <-> backend
+rabbitmq -> backend
 @enduml
