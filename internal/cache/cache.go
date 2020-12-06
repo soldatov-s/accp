@@ -1,6 +1,8 @@
 package cache
 
 import (
+	"net/http"
+
 	"github.com/soldatov-s/accp/internal/cache/cachedata"
 	"github.com/soldatov-s/accp/internal/cache/cacheerrs"
 	"github.com/soldatov-s/accp/internal/cache/external"
@@ -72,8 +74,16 @@ func (c *Cache) Add(key string, data cachedata.CacheData) error {
 }
 
 func (c *Cache) Select(key string) (*accpmodels.RRData, error) {
+	var (
+		value         *accpmodels.RRData
+		refreshExpire bool
+	)
+	refreshExpire = true
 	if v, err := c.Mem.Select(key); err == nil {
-		return v.(*accpmodels.RRData), nil
+		value = v.(*accpmodels.RRData)
+		if value.Response.StatusCode > http.StatusBadRequest {
+			refreshExpire = false
+		}
 	} else if err != cacheerrs.ErrNotFoundInCache {
 		return nil, err
 	}
@@ -82,15 +92,25 @@ func (c *Cache) Select(key string) (*accpmodels.RRData, error) {
 		return nil, cacheerrs.ErrNotFoundInCache
 	}
 
-	var value accpmodels.RRData
-	err := c.External.Select(key, &value)
-	if err != nil {
+	if refreshExpire {
+		if err := c.External.Expire(key); err != nil {
+			return nil, err
+		}
+	}
+
+	if value != nil {
+		return value, nil
+	}
+
+	value = &accpmodels.RRData{}
+
+	if err := c.External.Select(key, &value); err != nil {
 		return nil, err
 	}
 
-	if err := c.Mem.Add(key, &value); err != nil {
+	if err := c.Mem.Add(key, value); err != nil {
 		return nil, err
 	}
 
-	return &value, nil
+	return value, nil
 }

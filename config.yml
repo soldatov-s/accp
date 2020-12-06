@@ -61,16 +61,18 @@ proxy:
                 header: [device-id]
                 cookie: [device-id]
                 counter: 1000
-                pt: 1m # cache auto update period
+                pt: 1m # the period time for cache auto update
             refresh:
               count: 100
               time: 2m
             cache:
               memory:
                 ttl: 30s
+                ttlerr: 3s
               external:
                 keyprefix: users_
                 ttl: 60s
+                ttlerr: 3s
     /api/v1/users:
       parameters:
         dsn: http://192.168.100.48:30637
@@ -94,7 +96,11 @@ proxy:
           count: 100
           time: 2m
         cache:
-          memoryttl: 30s
-          externalttl: 60s
+          memory:
+            ttl: 30s
+            ttlerr: 3s
+          external:
+            ttl: 60s
+            ttlerr: 3s
   excluded:
     /api/v2/:

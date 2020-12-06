@@ -1,6 +1,7 @@
 package external
 
 import (
+	"net/http"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -36,6 +37,7 @@ type Cache struct {
 type CacheConfig struct {
 	KeyPrefix string
 	TTL       time.Duration
+	TTLErr    time.Duration
 }
 
 func (cc *CacheConfig) Initilize() error {
@@ -72,6 +74,10 @@ func (cc *CacheConfig) Merge(target *CacheConfig) *CacheConfig {
 		result.TTL = target.TTL
 	}
 
+	if target.TTLErr > 0 {
+		result.TTLErr = target.TTLErr
+	}
+
 	return result
 }
 
@@ -89,7 +95,11 @@ func NewCache(ctx *context.Context, cfg *CacheConfig, externalStorage Storage) (
 }
 
 func (c *Cache) Add(key string, data cachedata.CacheData) error {
-	err := c.externalStorage.Add(c.cfg.KeyPrefix+key, data, c.cfg.TTL)
+	ttl := c.cfg.TTL
+	if data.GetStatusCode() >= http.StatusBadRequest {
+		ttl = c.cfg.TTLErr
+	}
+	err := c.externalStorage.Add(c.cfg.KeyPrefix+key, data, ttl)
 	if err != nil {
 		return err
 	}
@@ -106,6 +116,17 @@ func (c *Cache) Select(key string, data interface{}) error {
 	}
 
 	c.log.Debug().Msgf("select %s from external cache", key)
+
+	return nil
+}
+
+func (c *Cache) Expire(key string) error {
+	err := c.externalStorage.Expire(c.cfg.KeyPrefix+key, c.cfg.TTL)
+	if err != nil {
+		return cacheerrs.ErrNotFoundInCache
+	}
+
+	c.log.Debug().Msgf("expire %s from external cache", key)
 
 	return nil
 }

@@ -1,6 +1,7 @@
 package memory
 
 import (
+	"net/http"
 	"sync"
 	"time"
 
@@ -17,7 +18,8 @@ const (
 )
 
 type CacheConfig struct {
-	TTL time.Duration
+	TTL    time.Duration
+	TTLErr time.Duration
 }
 
 func (cc *CacheConfig) Initilize() error {
@@ -41,14 +43,19 @@ func (cc *CacheConfig) Merge(target *CacheConfig) *CacheConfig {
 		result.TTL = target.TTL
 	}
 
+	if target.TTLErr > 0 {
+		result.TTLErr = target.TTLErr
+	}
+
 	return result
 }
 
 type Cache struct {
-	ctx        *context.Context
-	cfg        *CacheConfig
-	log        zerolog.Logger
-	clearTimer *time.Timer
+	ctx           *context.Context
+	cfg           *CacheConfig
+	log           zerolog.Logger
+	clearTimer    *time.Timer
+	clearErrTimer *time.Timer
 	sync.Map
 }
 
@@ -60,6 +67,10 @@ func NewCache(ctx *context.Context, cfg *CacheConfig) (*Cache, error) {
 
 	if c.cfg.TTL > 0 {
 		c.clearTimer = time.AfterFunc(c.cfg.TTL, c.ClearCache)
+	}
+
+	if c.cfg.TTLErr > 0 {
+		c.clearErrTimer = time.AfterFunc(c.cfg.TTLErr, c.ClearErrCache)
 	}
 
 	return c, nil
@@ -80,7 +91,9 @@ func (c *Cache) Add(key string, data interface{}) error {
 func (c *Cache) Select(key string) (interface{}, error) {
 	if v, ok := c.Load(key); ok {
 		c.log.Debug().Msgf("select %s from inmemory cache", key)
-		return v.(*cachedata.CacheItem).Data, nil
+		cacheItem := v.(*cachedata.CacheItem)
+		cacheItem.TimeStamp = time.Now()
+		return cacheItem.Data, nil
 	}
 
 	return nil, cacheerrs.ErrNotFoundInCache
@@ -111,4 +124,19 @@ func (c *Cache) ClearCache() {
 	})
 
 	c.clearTimer.Reset(c.cfg.TTL)
+}
+
+func (c *Cache) ClearErrCache() {
+	timeNow := time.Now().UTC()
+	c.Range(func(k, v interface{}) bool {
+		cacheItem := v.(*cachedata.CacheItem)
+		cacheData := cacheItem.Data.(cachedata.CacheData)
+		if cacheData.GetStatusCode() >= http.StatusBadRequest && timeNow.Sub(cacheItem.TimeStamp) > c.cfg.TTLErr {
+			c.Delete(k)
+			c.log.Debug().Msgf("remove expired from cache: %s", k)
+		}
+		return true
+	})
+
+	c.clearErrTimer.Reset(c.cfg.TTLErr)
 }

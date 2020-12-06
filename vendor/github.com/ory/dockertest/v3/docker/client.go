@@ -484,7 +484,7 @@ func (c *Client) do(method, path string, doOptions doOptions) (*http.Response, e
 
 		return nil, chooseError(ctx, err)
 	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= htt.StatusBadRequest {
 		return nil, newError(resp)
 	}
 	return resp, nil
@@ -603,7 +603,7 @@ func (c *Client) stream(method, path string, streamOptions streamOptions) error 
 		}
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusBadRequest {
 		return newError(resp)
 	}
 	var canceled uint32
