@@ -1,12 +1,13 @@
 package externalcache
 
 import (
+	"context"
 	"time"
 
-	"github.com/KromDaniel/rejonson"
-	"github.com/go-redis/redis"
+	"github.com/go-redis/redis/v8"
 	"github.com/rs/zerolog"
-	context "github.com/soldatov-s/accp/internal/ctx"
+	intcxt "github.com/soldatov-s/accp/internal/ctx"
+	"github.com/soldatov-s/accp/x/rejson"
 )
 
 type empty struct{}
@@ -19,12 +20,13 @@ type RedisConfig struct {
 }
 
 type RedisClient struct {
-	*rejonson.Client
-	ctx *context.Context
-	log zerolog.Logger
+	*rejson.Client
+	ctx    context.Context
+	intctx *intcxt.Context
+	log    zerolog.Logger
 }
 
-func NewRedisClient(ctx *context.Context, cfg *RedisConfig) (*RedisClient, error) {
+func NewRedisClient(ctx *intcxt.Context, cfg *RedisConfig) (*RedisClient, error) {
 	// Connect to database.
 	connOptions, err := redis.ParseURL(cfg.DSN)
 	if err != nil {
@@ -36,15 +38,16 @@ func NewRedisClient(ctx *context.Context, cfg *RedisConfig) (*RedisClient, error
 	connOptions.MinIdleConns = cfg.MinIdleConnections
 	connOptions.PoolSize = cfg.MaxOpenedConnections
 
-	client := redis.NewClient(connOptions)
-	extClient := rejonson.ExtendClient(client)
+	r := &RedisClient{ctx: context.Background()}
 
-	r := &RedisClient{Client: extClient}
-	if err := r.Ping().Err(); err != nil {
+	client := redis.NewClient(connOptions)
+	r.Client = rejson.ExtendClient(r.ctx, client)
+
+	if err := r.Ping(r.ctx).Err(); err != nil {
 		return nil, err
 	}
 
-	r.ctx = ctx
+	r.intctx = ctx
 	r.log = ctx.GetPackageLogger(empty{})
 
 	r.log.Info().Msg("Redis connection established")
@@ -52,7 +55,7 @@ func NewRedisClient(ctx *context.Context, cfg *RedisConfig) (*RedisClient, error
 }
 
 func (r *RedisClient) Add(key string, value interface{}, ttl time.Duration) error {
-	_, err := r.SetNX(key, value, ttl).Result()
+	err := r.JsonSetWithExpire(key, ".", value, ttl)
 	if err != nil {
 		return err
 	}
@@ -63,7 +66,7 @@ func (r *RedisClient) Add(key string, value interface{}, ttl time.Duration) erro
 }
 
 func (r *RedisClient) Select(key string, value interface{}) error {
-	cmdString := r.Get(key)
+	cmdString := r.Get(r.ctx, key)
 	_, err := cmdString.Result()
 
 	if err != nil {
@@ -81,7 +84,7 @@ func (r *RedisClient) Select(key string, value interface{}) error {
 }
 
 func (r *RedisClient) Expire(key string, ttl time.Duration) error {
-	cmdBool := r.Client.Expire(key, ttl)
+	cmdBool := r.Client.Expire(r.ctx, key, ttl)
 	_, err := cmdBool.Result()
 	if err != nil {
 		return err
@@ -93,7 +96,7 @@ func (r *RedisClient) Expire(key string, ttl time.Duration) error {
 }
 
 func (r *RedisClient) Update(key string, value interface{}, ttl time.Duration) error {
-	_, err := r.Set(key, value, ttl).Result()
+	_, err := r.Set(r.ctx, key, value, ttl).Result()
 	if err != nil {
 		return err
 	}

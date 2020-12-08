@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"sync"
 
+	"github.com/google/uuid"
 	"github.com/soldatov-s/accp/internal/cache/external"
 	"github.com/soldatov-s/accp/internal/httpclient"
 )
@@ -12,6 +13,7 @@ import (
 type RRData struct {
 	Response *Response
 	Request  *Request
+	UUID     string
 	Refresh  struct {
 		Mu       sync.Mutex
 		MaxCount int
@@ -23,11 +25,13 @@ func NewRRData() *RRData {
 	return &RRData{
 		Response: &Response{},
 		Request:  &Request{},
+		UUID:     uuid.New().String(),
 	}
 }
 
 // RRDataMarshal is middlobject for marshaling RRData
 type RRDataMarshal struct {
+	UUID           string
 	Response       *Response
 	RefreshCounter int
 }
@@ -44,6 +48,7 @@ func (r *RRData) MarshalBinary() (data []byte, err error) {
 	rrMarshal := &RRDataMarshal{
 		Response:       r.Response,
 		RefreshCounter: r.Refresh.Counter,
+		UUID:           r.UUID,
 	}
 
 	return rrMarshal.MarshalBinary()
@@ -56,6 +61,7 @@ func (r *RRData) UnmarshalBinary(data []byte) error {
 	}
 	r.Response = rrMarshal.Response
 	r.Refresh.Counter = rrMarshal.RefreshCounter
+	r.UUID = rrMarshal.UUID
 
 	return nil
 }
@@ -74,7 +80,14 @@ func (r *RRData) Update(client *httpclient.Client) error {
 		return err
 	}
 
-	return r.Response.Read(resp)
+	err = r.Response.Read(resp)
+	if err != nil {
+		return err
+	}
+
+	r.UUID = uuid.New().String()
+
+	return nil
 }
 
 func (r *RRData) LoadRefreshCounter(hk string, externalStorage *external.Cache) error {

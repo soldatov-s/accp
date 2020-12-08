@@ -276,7 +276,7 @@ func (r *Route) GetLimitsFromRequest(req *http.Request) map[string]interface{} {
 	for k, v := range r.Parameters.Limits {
 		for _, vv := range v.Header {
 			if h := req.Header.Get(vv); h != "" {
-				if vv == "Authorization" {
+				if strings.EqualFold(vv, "authorization") {
 					splitToken := strings.Split(h, " ")
 					if len(splitToken) < 2 {
 						h = splitToken[0]
@@ -285,17 +285,17 @@ func (r *Route) GetLimitsFromRequest(req *http.Request) map[string]interface{} {
 					}
 				}
 				// Always taken client IP
-				if vv == "X-Forwarded-For" {
+				if strings.EqualFold(vv, "x-forwarded-for") {
 					splitIP := strings.Split(h, ",")
 					h = splitIP[0]
 				}
-				limitList[k] = h
+				limitList[strings.ToLower(k)] = h
 			}
 		}
 
 		for _, vv := range v.Cookie {
 			if c, err := req.Cookie(vv); err == nil {
-				limitList[k] = c.Value
+				limitList[strings.ToLower(k)] = c.Value
 			}
 		}
 	}

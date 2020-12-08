@@ -174,3 +174,14 @@ func (c *Cache) JSONSetNX(key, path, json string) error {
 
 	return nil
 }
+
+func (c *Cache) GetUUID(key string, uuid *string) error {
+	err := c.externalStorage.JSONGet(c.cfg.KeyPrefix+key, "UUID", uuid)
+	if err != nil {
+		return err
+	}
+
+	c.log.Debug().Msgf("jsonget %s:%s from external cache", key, "UUID")
+
+	return nil
+}
