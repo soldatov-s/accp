@@ -34,7 +34,7 @@ func (r *Response) Write(w http.ResponseWriter) error {
 
 	httputils.CopyHeader(w.Header(), r.Header)
 	w.WriteHeader(r.StatusCode)
-	w.Header().Add("refreshed", strconv.Itoa(int(r.TimeStamp)))
+	w.Header().Add("accp-refreshed", strconv.Itoa(int(r.TimeStamp)))
 	_, err := w.Write([]byte(r.Body))
 	return err
 }
