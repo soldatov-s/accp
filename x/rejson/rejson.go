@@ -31,13 +31,13 @@ func ExtendClient(ctx context.Context, client *redis.Client) *Client {
 	}
 }
 
-func (cl *Client) JsonSetWithExpire(key, path string, object interface{}, expiration time.Duration, args ...interface{}) error {
+func (cl *Client) JSONSetWithExpire(key, path string, object interface{}, expiration time.Duration, args ...interface{}) error {
 	jsonData, err := json.Marshal(object)
 	if err != nil {
 		return err
 	}
 
-	if _, err := cl.redisProcessor.JsonSet(key, path, string(jsonData), args...).Result(); err != nil {
+	if _, err = cl.redisProcessor.JSONSET(key, path, string(jsonData), args...).Result(); err != nil {
 		return err
 	}
 
@@ -47,7 +47,7 @@ func (cl *Client) JsonSetWithExpire(key, path string, object interface{}, expira
 }
 
 /*
-JsonGet
+JSONGET
 
 Possible args:
 
@@ -60,7 +60,7 @@ Possible args:
 returns stringCmd -> the JSON string
 read more: https://oss.redislabs.com/rejson/commands/#jsonget
 */
-func (cl *redisProcessor) JsonGet(key string, args ...interface{}) *redis.StringCmd {
+func (cl *redisProcessor) JSONGET(key string, args ...interface{}) *redis.StringCmd {
 	return jsonGetExecute(cl, append([]interface{}{key}, args...)...)
 }
 
@@ -69,8 +69,8 @@ jsonSet
 Possible args:
 (Optional)
 */
-func (cl *redisProcessor) JsonSet(key, path, json string, args ...interface{}) *redis.StatusCmd {
-	return jsonSetExecute(cl, append([]interface{}{key, path, json}, args...)...)
+func (cl *redisProcessor) JSONSET(key, path, jsonData string, args ...interface{}) *redis.StatusCmd {
+	return jsonSetExecute(cl, append([]interface{}{key, path, jsonData}, args...)...)
 }
 
 func concatWithCmd(cmdName string, args []interface{}) []interface{} {
@@ -78,7 +78,7 @@ func concatWithCmd(cmdName string, args []interface{}) []interface{} {
 	res[0] = cmdName
 	for _, v := range args {
 		if str, ok := v.(string); ok {
-			if len(str) == 0 {
+			if str == "" {
 				continue
 			}
 		}

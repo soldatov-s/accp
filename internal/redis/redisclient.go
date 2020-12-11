@@ -55,7 +55,7 @@ func NewRedisClient(ctx *intcxt.Context, cfg *RedisConfig) (*RedisClient, error)
 }
 
 func (r *RedisClient) Add(key string, value interface{}, ttl time.Duration) error {
-	err := r.JsonSetWithExpire(key, ".", value, ttl)
+	err := r.JSONSetWithExpire(key, ".", value, ttl)
 	if err != nil {
 		return err
 	}
@@ -108,7 +108,7 @@ func (r *RedisClient) Update(key string, value interface{}, ttl time.Duration) e
 
 // JSONGet item from cache by key.
 func (r *RedisClient) JSONGet(key, path string, value interface{}) error {
-	cmdString := r.JsonGet(key, path)
+	cmdString := r.JSONGET(key, path)
 	_, err := cmdString.Result()
 
 	if err != nil {
@@ -127,7 +127,7 @@ func (r *RedisClient) JSONGet(key, path string, value interface{}) error {
 
 // JSONSet item in cache by key.
 func (r *RedisClient) JSONSet(key, path, json string) error {
-	_, err := r.JsonSet(key, path, json).Result()
+	_, err := r.JSONSET(key, path, json).Result()
 	if err != nil {
 		return err
 	}
@@ -139,7 +139,7 @@ func (r *RedisClient) JSONSet(key, path, json string) error {
 
 // JSONSetNX item in cache by key.
 func (r *RedisClient) JSONSetNX(key, path, json string) error {
-	_, err := r.JsonSet(key, path, json, "NX").Result()
+	_, err := r.JSONSET(key, path, json, "NX").Result()
 	if err != nil {
 		return err
 	}

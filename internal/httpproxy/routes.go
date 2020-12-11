@@ -20,6 +20,9 @@ import (
 const (
 	defaultCount = 100
 	defaultTime  = 10 * time.Second
+
+	defaultRefreshMutexExpire = 30 * time.Second
+	checkInterval             = 100 * time.Millisecond
 )
 
 type RefreshConfig struct {
@@ -303,6 +306,61 @@ func (r *Route) GetLimitsFromRequest(req *http.Request) map[string]interface{} {
 	return limitList
 }
 
+func (r *Route) checkLimit(k string, v interface{}, result *bool) error {
+	if vv, ok := (r.Limits[k])[v]; !ok {
+		r.Limits[k][v] = &Limit{
+			Counter:    1,
+			LastAccess: time.Now().Unix(),
+		}
+		if err := vv.CreateLimit(r.Route, k, r.Cache.External); err != nil {
+			return err
+		}
+	} else {
+		mu, err := r.Cache.External.NewMutexByID(r.Route+"_"+k, defaultRefreshMutexExpire, checkInterval)
+		if err != nil {
+			r.log.Err(err).Msg("INTERNAL SERVER ERROR")
+
+			return err
+		}
+
+		defer func() {
+			err1 := mu.Unlock()
+			if err1 != nil {
+				r.log.Err(err1).Msg("INTERNAL SERVER ERROR")
+			}
+		}()
+
+		err = mu.Lock()
+		if err != nil {
+			r.log.Err(err).Msg("INTERNAL SERVER ERROR")
+
+			return err
+		}
+
+		if err := vv.LoadLimit(r.Route, k, r.Cache.External); err != nil {
+			r.log.Err(err).Msgf("failed to get limit %s from external cache", k)
+		}
+
+		vv.Counter++
+
+		if vv.Counter >= r.Parameters.Limits[k].Counter &&
+			time.Now().Add(-r.Parameters.Limits[k].PT).Unix() < vv.LastAccess {
+			*result = *result && false
+			r.log.Debug().Msgf("limit reached: %s", k)
+		} else if time.Now().Add(-r.Parameters.Limits[k].PT).Unix() >= vv.LastAccess {
+			vv.Counter = 1
+			vv.LastAccess = time.Now().Unix()
+			go func() {
+				if err := vv.UpdateLimit(r.Route, k, r.Cache.External); err != nil {
+					r.log.Err(err).Msgf("failed to update limit %s in external cache", k)
+				}
+			}()
+		}
+	}
+
+	return nil
+}
+
 func (r *Route) CheckLimits(req *http.Request) (*bool, error) {
 	result := true
 
@@ -316,37 +374,8 @@ func (r *Route) CheckLimits(req *http.Request) (*bool, error) {
 	}
 
 	for k, v := range limitList {
-		if vv, ok := (r.Limits[k])[v]; !ok {
-			r.Limits[k][v] = &Limit{
-				Counter:    1,
-				LastAccess: time.Now().Unix(),
-			}
-			if err := vv.CreateLimit(r.Route, k, r.Cache.External); err != nil {
-				return nil, err
-			}
-		} else {
-			vv.Mu.Lock()
-			defer vv.Mu.Unlock()
-
-			if err := vv.LoadLimit(r.Route, k, r.Cache.External); err != nil {
-				r.log.Err(err).Msgf("failed to get limit %s from external cache", k)
-			}
-
-			vv.Counter++
-
-			if vv.Counter >= r.Parameters.Limits[k].Counter &&
-				time.Now().Add(-r.Parameters.Limits[k].PT).Unix() < vv.LastAccess {
-				result = result && false
-				r.log.Debug().Msgf("limit reached: %s", k)
-			} else if time.Now().Add(-r.Parameters.Limits[k].PT).Unix() >= vv.LastAccess {
-				vv.Counter = 1
-				vv.LastAccess = time.Now().Unix()
-				go func() {
-					if err := vv.UpdateLimit(r.Route, k, r.Cache.External); err != nil {
-						r.log.Err(err).Msgf("failed to update limit %s in external cache", k)
-					}
-				}()
-			}
+		if err := r.checkLimit(k, v, &result); err != nil {
+			return nil, err
 		}
 	}
 

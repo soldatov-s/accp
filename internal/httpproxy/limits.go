@@ -2,7 +2,6 @@ package httpproxy
 
 import (
 	"encoding/json"
-	"sync"
 	"time"
 
 	"github.com/soldatov-s/accp/internal/cache/external"
@@ -52,7 +51,6 @@ func (lc *LimitConfig) Merge(target *LimitConfig) *LimitConfig {
 }
 
 type Limit struct {
-	Mu         sync.Mutex
 	Counter    int
 	LastAccess int64 // Unix time
 }
@@ -88,7 +86,6 @@ func (l *Limit) UpdateLimit(route, key string, externalStorage *external.Cache) 
 	if externalStorage == nil {
 		return nil
 	}
-	// TODO: add distributed mutex, because maybe race condition between instance
 	counterData, lastAccessData, err := l.marshal()
 	if err != nil {
 		return err

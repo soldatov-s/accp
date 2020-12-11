@@ -9,17 +9,17 @@ import (
 )
 
 func TestParse(t *testing.T) {
-	cfg := &cfg.Configuration{}
+	config := &cfg.Configuration{}
 
 	err := testHelpers.LoadTestYAML()
 	require.Nil(t, err)
 
-	err = cfg.Parse()
+	err = config.Parse()
 	require.Nil(t, err)
 
-	require.Nil(t, cfg.Admin)
-	require.Nil(t, cfg.Rabbitmq)
-	require.Nil(t, cfg.Redis)
+	require.Nil(t, config.Admin)
+	require.Nil(t, config.Rabbitmq)
+	require.Nil(t, config.Redis)
 
-	t.Logf("Test config: %+v", cfg)
+	t.Logf("Test config: %+v", config)
 }

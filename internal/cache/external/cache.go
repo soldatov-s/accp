@@ -8,6 +8,7 @@ import (
 	"github.com/soldatov-s/accp/internal/cache/cachedata"
 	"github.com/soldatov-s/accp/internal/cache/cacheerrs"
 	context "github.com/soldatov-s/accp/internal/ctx"
+	externalcache "github.com/soldatov-s/accp/internal/redis"
 )
 
 type empty struct{}
@@ -25,6 +26,7 @@ type Storage interface {
 	JSONGet(key, path string, value interface{}) error
 	JSONSet(key, path, json string) error
 	JSONSetNX(key, path, json string) error
+	NewMutexByID(lockID string, expire, checkInterval time.Duration) (*externalcache.Mutex, error)
 }
 
 type Cache struct {
@@ -184,4 +186,8 @@ func (c *Cache) GetUUID(key string, uuid *string) error {
 	c.log.Debug().Msgf("jsonget %s:%s from external cache", key, "UUID")
 
 	return nil
+}
+
+func (c *Cache) NewMutexByID(lockID string, expire, checkInterval time.Duration) (*externalcache.Mutex, error) {
+	return c.externalStorage.NewMutexByID(lockID, expire, checkInterval)
 }

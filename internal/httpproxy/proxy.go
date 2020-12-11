@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -162,7 +163,7 @@ func (p *HTTPProxy) fillRoutes(
 		}
 
 		if err := p.fillExcludedRoutes(ctx, rc[configKey], parentRoute+"/"+k, parameters); err != nil {
-			return nil
+			return err
 		}
 
 		if err := p.fillRoutes(
@@ -193,7 +194,7 @@ func (p *HTTPProxy) fillExcludedRoutes(
 		// Check for duplicate
 		if p.FindExcludedRouteByPath(k) != nil {
 			p.log.Warn().Msgf("duplicated excluded route: %s", k)
-			return nil
+			return fmt.Errorf("duplicated excluded route: %s", k)
 		}
 
 		var previousLevelRoutes map[string]*Route
@@ -541,7 +542,6 @@ func (p *HTTPProxy) HydrationIntrospect(route *Route, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	// TODO: adds regexp for replace fields from trimedfilds (see introspector config) to empty string
 
 	var str string
 	switch p.cfg.Hydration.Introspect {
