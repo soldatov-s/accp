@@ -2,6 +2,7 @@ package cache
 
 import (
 	"net/http"
+	"sync"
 
 	"github.com/soldatov-s/accp/internal/cache/cachedata"
 	"github.com/soldatov-s/accp/internal/cache/cacheerrs"
@@ -53,8 +54,10 @@ func (cc *Config) Merge(target *Config) *Config {
 }
 
 type Cache struct {
-	Mem      *memory.Cache
-	External *external.Cache
+	Mem            *memory.Cache
+	External       *external.Cache
+	WaitAnswerList map[string]chan struct{}
+	WaiteAnswerMu  map[string]*sync.Mutex
 }
 
 func (c *Cache) Add(key string, data cachedata.CacheData) error {
@@ -71,6 +74,20 @@ func (c *Cache) Add(key string, data cachedata.CacheData) error {
 	}
 
 	return nil
+}
+
+func (c *Cache) waitAnswer(hk string, ch chan struct{}) (*accpmodels.RRData, error) {
+	<-ch
+
+	var (
+		v   interface{}
+		err error
+	)
+	if v, err = c.Mem.Select(hk); err == nil {
+		value := v.(*accpmodels.RRData)
+		return value, nil
+	}
+	return nil, err
 }
 
 func (c *Cache) Select(key string) (*accpmodels.RRData, error) {
@@ -108,15 +125,46 @@ func (c *Cache) Select(key string) (*accpmodels.RRData, error) {
 		}
 	}
 
-	value = &accpmodels.RRData{}
+	// Check that we not started to handle the request to redis
+	var (
+		waitCh chan struct{}
+		ok     bool
+	)
+	if waitCh, ok = c.WaitAnswerList[key]; !ok {
+		// If we not started to handle the request we need to add lock-channel to map
+		var (
+			mu *sync.Mutex
+			ok bool
+		)
+		// Create mutex for same requests
+		if mu, ok = c.WaiteAnswerMu[key]; !ok {
+			mu = &sync.Mutex{}
+			c.WaiteAnswerMu[key] = mu
+		}
+		mu.Lock()
+		if waitCh1, ok1 := c.WaitAnswerList[key]; !ok1 {
+			ch := make(chan struct{})
+			c.WaitAnswerList[key] = ch
+			mu.Unlock() // unlock mutex fast as possible
 
-	if err := c.External.Select(key, &value); err != nil {
-		return nil, err
+			value = &accpmodels.RRData{}
+
+			if err := c.External.Select(key, &value); err != nil {
+				return nil, err
+			}
+
+			if err := c.Mem.Add(key, value); err != nil {
+				return nil, err
+			}
+
+			close(ch)
+			delete(c.WaitAnswerList, key)
+			// Delete removes only item from map, GC remove mutex after removed all references to it.
+			delete(c.WaiteAnswerMu, key)
+		} else {
+			mu.Unlock()
+			return c.waitAnswer(key, waitCh1)
+		}
 	}
-
-	if err := c.Mem.Add(key, value); err != nil {
-		return nil, err
-	}
-
-	return value, nil
+	return c.waitAnswer(key, waitCh)
 }
