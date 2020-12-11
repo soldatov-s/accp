@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strconv"
 	"sync"
+	"time"
 
 	"github.com/soldatov-s/accp/internal/httputils"
 )
@@ -15,6 +17,7 @@ type Response struct {
 	Body       string
 	Header     http.Header
 	StatusCode int
+	TimeStamp  int64
 }
 
 func (r *Response) MarshalBinary() (data []byte, err error) {
@@ -31,6 +34,7 @@ func (r *Response) Write(w http.ResponseWriter) error {
 
 	httputils.CopyHeader(w.Header(), r.Header)
 	w.WriteHeader(r.StatusCode)
+	w.Header().Add("refreshed", strconv.Itoa(int(r.TimeStamp)))
 	_, err := w.Write([]byte(r.Body))
 	return err
 }
@@ -49,6 +53,7 @@ func (r *Response) Read(resp *http.Response) error {
 	r.Header = make(http.Header)
 	httputils.CopyHeader(r.Header, resp.Header)
 	r.StatusCode = resp.StatusCode
+	r.TimeStamp = time.Now().UTC().Unix()
 
 	return nil
 }
