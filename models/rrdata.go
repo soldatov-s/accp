@@ -15,7 +15,7 @@ type RRData struct {
 	Request  *Request
 	UUID     string
 	Refresh  struct {
-		Mu       sync.Mutex
+		mu       sync.Mutex
 		MaxCount int
 		Counter  int
 	}
@@ -29,41 +29,12 @@ func NewRRData() *RRData {
 	}
 }
 
-// RRDataMarshal is middlobject for marshaling RRData
-type RRDataMarshal struct {
-	UUID           string
-	Response       *Response
-	RefreshCounter int
-}
-
-func (r *RRDataMarshal) MarshalBinary() (data []byte, err error) {
+func (r *RRData) MarshalBinary() (data []byte, err error) {
 	return json.Marshal(r)
 }
 
-func (r *RRDataMarshal) UnmarshalBinary(data []byte) error {
-	return json.Unmarshal(data, r)
-}
-
-func (r *RRData) MarshalBinary() (data []byte, err error) {
-	rrMarshal := &RRDataMarshal{
-		Response:       r.Response,
-		RefreshCounter: r.Refresh.Counter,
-		UUID:           r.UUID,
-	}
-
-	return rrMarshal.MarshalBinary()
-}
-
 func (r *RRData) UnmarshalBinary(data []byte) error {
-	rrMarshal := &RRDataMarshal{}
-	if err := rrMarshal.UnmarshalBinary(data); err != nil {
-		return err
-	}
-	r.Response = rrMarshal.Response
-	r.Refresh.Counter = rrMarshal.RefreshCounter
-	r.UUID = rrMarshal.UUID
-
-	return nil
+	return json.Unmarshal(data, r)
 }
 
 func (r *RRData) GetStatusCode() int {
@@ -113,4 +84,12 @@ func (r *RRData) UpdateRefreshCounter(hk string, externalStorage *external.Cache
 	}
 
 	return nil
+}
+
+func (r *RRData) MuLock() {
+	r.Refresh.mu.Lock()
+}
+
+func (r *RRData) MuUnlock() {
+	r.Refresh.mu.Unlock()
 }

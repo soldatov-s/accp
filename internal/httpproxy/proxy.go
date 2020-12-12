@@ -277,8 +277,8 @@ func (p *HTTPProxy) refresh(rrdata *accpmodels.RRData, hk string, route *Route) 
 
 	p.log.Debug().Msgf("refresh cache, key %s, maxCount %d, current count %d", hk, rrdata.Refresh.MaxCount, rrdata.Refresh.Counter)
 
-	rrdata.Refresh.Mu.Lock()
-	defer rrdata.Refresh.Mu.Unlock()
+	rrdata.MuLock()
+	defer rrdata.MuUnlock()
 
 	if err := rrdata.LoadRefreshCounter(hk, route.Cache.External); err != nil {
 		p.log.Err(err).Msg("failed to get refresh-counter from external cache")
