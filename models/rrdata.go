@@ -9,32 +9,57 @@ import (
 	"github.com/soldatov-s/accp/internal/httpclient"
 )
 
+type Refresh struct {
+	mu       sync.Mutex
+	MaxCount int
+	Counter  int
+}
+
+// RData contains response for it
+type RData struct {
+	Response *Response
+	UUID     string
+	Refresh  Refresh
+}
+
+func (r *RData) MarshalBinary() (data []byte, err error) {
+	return json.Marshal(r)
+}
+
+func (r *RData) UnmarshalBinary(data []byte) error {
+	return json.Unmarshal(data, r)
+}
+
 // RRData contains request and response for it
 type RRData struct {
-	Response *Response
-	Request  *Request
-	UUID     string
-	Refresh  struct {
-		mu       sync.Mutex
-		MaxCount int
-		Counter  int
-	}
+	RData
+	Request *Request
 }
 
 func NewRRData() *RRData {
 	return &RRData{
-		Response: &Response{},
-		Request:  &Request{},
-		UUID:     uuid.New().String(),
+		RData: RData{
+			Response: &Response{},
+			UUID:     uuid.New().String(),
+		},
+		Request: &Request{},
 	}
 }
 
 func (r *RRData) MarshalBinary() (data []byte, err error) {
-	return json.Marshal(r)
+	return json.Marshal(&r.RData)
 }
 
 func (r *RRData) UnmarshalBinary(data []byte) error {
-	return json.Unmarshal(data, r)
+	rData := RData{}
+	if err := json.Unmarshal(data, &rData); err != nil {
+		return err
+	}
+	r.RData.Response = rData.Response
+	r.RData.UUID = rData.UUID
+	r.RData.Refresh.Counter = rData.Refresh.Counter
+	r.RData.Refresh.MaxCount = rData.Refresh.MaxCount
+	return nil
 }
 
 func (r *RRData) GetStatusCode() int {
