@@ -23,6 +23,7 @@ import (
 	"github.com/soldatov-s/accp/internal/introspection"
 	"github.com/soldatov-s/accp/internal/publisher"
 	accpmodels "github.com/soldatov-s/accp/models"
+	"github.com/valyala/bytebufferpool"
 )
 
 type empty struct{}
@@ -501,9 +502,9 @@ func (p *HTTPProxy) proxyHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *HTTPProxy) hashKey(r *http.Request) (string, error) {
-	buf := bytes.Buffer{}
+	buf := bytebufferpool.Get()
 	if r.Body != nil {
-		if _, err := io.Copy(&buf, r.Body); err != nil {
+		if _, err := io.Copy(buf, r.Body); err != nil {
 			return "", err
 		}
 	}

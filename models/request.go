@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/soldatov-s/accp/internal/httputils"
+	"github.com/valyala/bytebufferpool"
 )
 
 type Request struct {
@@ -31,7 +32,9 @@ func (r *Request) Read(req *http.Request) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	buf := new(bytes.Buffer)
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
 	if req.Body != nil {
 		_, err := io.Copy(buf, req.Body)
 		if err != nil {

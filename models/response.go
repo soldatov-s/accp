@@ -1,7 +1,6 @@
 package models
 
 import (
-	"bytes"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -10,6 +9,7 @@ import (
 	"time"
 
 	"github.com/soldatov-s/accp/internal/httputils"
+	"github.com/valyala/bytebufferpool"
 )
 
 type Response struct {
@@ -43,7 +43,9 @@ func (r *Response) Read(resp *http.Response) error {
 	r.readMu.Lock()
 	defer r.readMu.Unlock()
 
-	buf := new(bytes.Buffer)
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
 	_, err := io.Copy(buf, resp.Body)
 	if err != nil {
 		return err
