@@ -18,7 +18,7 @@ type Refresh struct {
 // RData contains response for it
 type RData struct {
 	Response *Response
-	UUID     string
+	UUID     uuid.UUID
 	Refresh  Refresh
 }
 
@@ -40,7 +40,7 @@ func NewRRData() *RRData {
 	return &RRData{
 		RData: RData{
 			Response: &Response{},
-			UUID:     uuid.New().String(),
+			UUID:     uuid.New(),
 		},
 		Request: &Request{},
 	}
@@ -81,7 +81,7 @@ func (r *RRData) Update(client *httpclient.Client) error {
 		return err
 	}
 
-	r.UUID = uuid.New().String()
+	r.UUID = uuid.New()
 
 	return nil
 }

@@ -119,7 +119,7 @@ func (c *Cache) Select(key string) (*accpmodels.RRData, error) {
 		// Checking that item in external cache not changed
 		var UUID string
 		if err := c.External.GetUUID(key, &UUID); err == nil {
-			if value.UUID == UUID {
+			if value.UUID.String() == UUID {
 				return value, nil
 			}
 		}

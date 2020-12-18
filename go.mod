@@ -4,6 +4,8 @@ go 1.15
 
 require (
 	github.com/go-redis/redis/v8 v8.4.2
+	github.com/gogo/protobuf v1.3.1
+	github.com/golang/protobuf v1.4.2
 	github.com/google/uuid v1.1.2
 	github.com/ory/dockertest/v3 v3.6.2
 	github.com/pkg/errors v0.9.1
@@ -14,4 +16,5 @@ require (
 	github.com/streadway/amqp v1.0.0
 	github.com/stretchr/testify v1.6.1
 	github.com/valyala/bytebufferpool v1.0.0
+	google.golang.org/protobuf v1.23.0
 )

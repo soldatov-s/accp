@@ -1,7 +1,6 @@
 package models
 
 import (
-	"encoding/json"
 	"io"
 	"net/http"
 	"strconv"
@@ -9,7 +8,9 @@ import (
 	"time"
 
 	"github.com/soldatov-s/accp/internal/httputils"
+	"github.com/soldatov-s/accp/models/protobuf"
 	"github.com/valyala/bytebufferpool"
+	"google.golang.org/protobuf/proto"
 )
 
 type Response struct {
@@ -21,11 +22,46 @@ type Response struct {
 }
 
 func (r *Response) MarshalBinary() (data []byte, err error) {
-	return json.Marshal(r)
+	tmp := &protobuf.Response{
+		Body:       r.Body,
+		StatusCode: int64(r.StatusCode),
+		TimeStamp:  r.TimeStamp,
+	}
+
+	tmp.Header = &protobuf.Header{
+		Header: make(map[string]*protobuf.HeaderList),
+	}
+
+	for k, vv := range r.Header {
+		for _, v := range vv {
+			if tmp.Header.Header[k] == nil {
+				tmp.Header.Header[k] = &protobuf.HeaderList{}
+			}
+			tmp.Header.Header[k].Header = append(tmp.Header.Header[k].Header, v)
+		}
+	}
+
+	return proto.Marshal(tmp)
 }
 
 func (r *Response) UnmarshalBinary(data []byte) error {
-	return json.Unmarshal(data, r)
+	tmp := &protobuf.Response{}
+	if err := proto.Unmarshal(data, tmp); err != nil {
+		return err
+	}
+
+	r.Body = tmp.Body
+	r.StatusCode = int(tmp.StatusCode)
+	r.TimeStamp = tmp.TimeStamp
+	if r.Header == nil {
+		r.Header = make(http.Header)
+	}
+
+	for k, vv := range tmp.Header.Header {
+		r.Header[k] = append(r.Header[k], vv.Header...)
+	}
+
+	return nil
 }
 
 func (r *Response) Write(w http.ResponseWriter) error {
