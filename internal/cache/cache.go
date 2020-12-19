@@ -168,3 +168,13 @@ func (c *Cache) Select(key string) (*accpmodels.RRData, error) {
 	}
 	return c.waitAnswer(key, waitCh)
 }
+
+func (c *Cache) Delete(key string) error {
+	c.Mem.Delete(key)
+
+	if c.External == nil {
+		return nil
+	}
+
+	return c.External.JSONDelete(key, ".")
+}

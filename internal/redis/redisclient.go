@@ -148,3 +148,14 @@ func (r *RedisClient) JSONSetNX(key, path, json string) error {
 
 	return nil
 }
+
+func (r *RedisClient) JSONDelete(key, path string) error {
+	_, err := r.JSONDEL(key, path).Result()
+	if err != nil {
+		return err
+	}
+
+	r.log.Debug().Msgf("JsonDelete key %s in cache", key)
+
+	return nil
+}

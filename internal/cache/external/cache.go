@@ -27,6 +27,7 @@ type Storage interface {
 	JSONSet(key, path, json string) error
 	JSONSetNX(key, path, json string) error
 	NewMutexByID(lockID string, expire, checkInterval time.Duration) (*externalcache.Mutex, error)
+	JSONDelete(key, path string) error
 }
 
 type Cache struct {
@@ -190,4 +191,15 @@ func (c *Cache) GetUUID(key string, uuid *string) error {
 
 func (c *Cache) NewMutexByID(lockID string, expire, checkInterval time.Duration) (*externalcache.Mutex, error) {
 	return c.externalStorage.NewMutexByID(lockID, expire, checkInterval)
+}
+
+func (c *Cache) JSONDelete(key, path string) error {
+	err := c.externalStorage.JSONDelete(c.cfg.KeyPrefix+key, path)
+	if err != nil {
+		return err
+	}
+
+	c.log.Debug().Msgf("delete %s from external cache", key)
+
+	return nil
 }

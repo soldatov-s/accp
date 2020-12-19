@@ -302,12 +302,19 @@ func (p *HTTPProxy) refresh(rrdata *accpmodels.RRData, hk string, route *Route) 
 
 	if err = p.HydrationIntrospect(route, req); err != nil {
 		p.log.Err(err).Msg("introspection failed")
+		if err = route.Cache.Delete(hk); err != nil {
+			p.log.Err(err).Msg("delete key failed")
+		}
 		return
 	}
 
 	client := route.Pool.GetFromPool()
 	if err := rrdata.UpdateByRequest(client, req); err != nil {
 		p.log.Err(err).Msg("failed to update RRdata")
+		if err = route.Cache.Delete(hk); err != nil {
+			p.log.Err(err).Msg("delete key failed")
+		}
+		return
 	}
 
 	rrdata.Refresh.Counter = 0

@@ -73,6 +73,15 @@ func (cl *redisProcessor) JSONSET(key, path, jsonData string, args ...interface{
 	return jsonSetExecute(cl, append([]interface{}{key, path, jsonData}, args...)...)
 }
 
+/*
+JsonDel
+returns intCmd -> deleted 1 or 0
+read more: https://oss.redislabs.com/rejson/commands/#jsondel
+*/
+func (cl *redisProcessor) JSONDEL(key, path string) *redis.IntCmd {
+	return jsonDelExecute(cl, key, path)
+}
+
 func concatWithCmd(cmdName string, args []interface{}) []interface{} {
 	res := make([]interface{}, 1)
 	res[0] = cmdName
@@ -95,6 +104,12 @@ func jsonGetExecute(c *redisProcessor, args ...interface{}) *redis.StringCmd {
 
 func jsonSetExecute(c *redisProcessor, args ...interface{}) *redis.StatusCmd {
 	cmd := redis.NewStatusCmd(c.ctx, concatWithCmd("JSON.SET", args)...)
+	_ = c.Process(c.ctx, cmd)
+	return cmd
+}
+
+func jsonDelExecute(c *redisProcessor, args ...interface{}) *redis.IntCmd {
+	cmd := redis.NewIntCmd(c.ctx, concatWithCmd("JSON.DEL", args)...)
 	_ = c.Process(c.ctx, cmd)
 	return cmd
 }
