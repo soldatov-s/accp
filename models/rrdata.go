@@ -2,6 +2,7 @@ package models
 
 import (
 	"encoding/json"
+	"net/http"
 	"sync"
 
 	"github.com/google/uuid"
@@ -71,6 +72,11 @@ func (r *RRData) Update(client *httpclient.Client) error {
 	if err != nil {
 		return err
 	}
+
+	return r.UpdateByRequest(client, req)
+}
+
+func (r *RRData) UpdateByRequest(client *httpclient.Client, req *http.Request) error {
 	resp, err := client.Do(req)
 	if err != nil {
 		return err

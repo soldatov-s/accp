@@ -294,8 +294,19 @@ func (p *HTTPProxy) refresh(rrdata *accpmodels.RRData, hk string, route *Route) 
 		return
 	}
 
+	req, err := rrdata.Request.BuildRequest()
+	if err != nil {
+		p.log.Err(err).Msg("failed to build request")
+		return
+	}
+
+	if err = p.HydrationIntrospect(route, req); err != nil {
+		p.log.Err(err).Msg("introspection failed")
+		return
+	}
+
 	client := route.Pool.GetFromPool()
-	if err := rrdata.Update(client); err != nil {
+	if err := rrdata.UpdateByRequest(client, req); err != nil {
 		p.log.Err(err).Msg("failed to update RRdata")
 	}
 
