@@ -347,15 +347,17 @@ func (r *Route) checkLimit(k string, v interface{}, result *bool) error {
 			time.Now().Add(-r.Parameters.Limits[k].PT).Unix() < vv.LastAccess {
 			*result = *result && false
 			r.log.Debug().Msgf("limit reached: %s", k)
+			return nil
 		} else if time.Now().Add(-r.Parameters.Limits[k].PT).Unix() >= vv.LastAccess {
 			vv.Counter = 1
 			vv.LastAccess = time.Now().Unix()
-			go func() {
-				if err := vv.UpdateLimit(r.Route, k, r.Cache.External); err != nil {
-					r.log.Err(err).Msgf("failed to update limit %s in external cache", k)
-				}
-			}()
 		}
+
+		go func() {
+			if err := vv.UpdateLimit(r.Route, k, r.Cache.External); err != nil {
+				r.log.Err(err).Msgf("failed to update limit %s in external cache", k)
+			}
+		}()
 	}
 
 	return nil
