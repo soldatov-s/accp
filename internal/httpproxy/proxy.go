@@ -511,6 +511,11 @@ func (p *HTTPProxy) proxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if route.Parameters.Cache.Disabled {
+		p.NonCachedHandler(route, w, r)
+		return
+	}
+
 	if route.Parameters.Methods.Has(r.Method) {
 		p.CachedHandler(route, w, r)
 		return

@@ -12,6 +12,7 @@ import (
 )
 
 type Config struct {
+	Disabled bool
 	Memory   *memory.CacheConfig
 	External *external.CacheConfig
 }
@@ -39,6 +40,11 @@ func (cc *Config) Merge(target *Config) *Config {
 	}
 
 	if target == nil {
+		return result
+	}
+
+	if target.Disabled {
+		result.Disabled = true
 		return result
 	}
 
