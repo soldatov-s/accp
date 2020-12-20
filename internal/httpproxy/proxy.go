@@ -31,8 +31,7 @@ type empty struct{}
 type Config struct {
 	Listen    string
 	Hydration struct {
-		RequestID  bool
-		Introspect string
+		RequestID bool
 	}
 	Routes   map[string]*RouteConfig
 	Excluded map[string]*RouteConfig
@@ -563,7 +562,7 @@ func (p *HTTPProxy) HydrationIntrospect(route *Route, r *http.Request) error {
 	}
 
 	var str string
-	switch p.cfg.Hydration.Introspect {
+	switch route.IntrospectHydration {
 	case "nothing":
 		return nil
 	case "plaintext":

@@ -35,11 +35,11 @@ proxy:
   listen: 0.0.0.0:9000
   hydration:
     requestid: true
-    introspect: plaintext # add result of introspection as plaintext in header
   routes:
     /api/v1/:
       parameters:
         introspect: true
+        introspecthydration: plaintext # add result of introspection as plaintext in header
         dsn: http://192.168.100.48:30637
         methods: [GET, PUT, POST]
         pool:
@@ -75,6 +75,8 @@ proxy:
                 ttlerr: 3s
     /api/v1/users:
       parameters:
+        introspect: true
+        introspecthydration: plaintext # add result of introspection as plaintext in header
         dsn: http://192.168.100.48:30637
         pool:
           size: 20

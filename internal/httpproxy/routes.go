@@ -75,7 +75,8 @@ type RouteParameters struct {
 	Methods  Arguments
 	RouteKey string
 	// Introspect if true it means that necessary to introspect request
-	Introspect bool
+	Introspect          bool
+	IntrospectHydration string
 }
 
 func (rp *RouteParameters) Initilize() error {
@@ -145,6 +146,10 @@ func (rp *RouteParameters) Merge(target *RouteParameters) *RouteParameters {
 		result.Introspect = true
 	}
 
+	if target.IntrospectHydration != "" {
+		result.IntrospectHydration = target.IntrospectHydration
+	}
+
 	if target.DSN != "" {
 		result.DSN = target.DSN
 	}
@@ -198,19 +203,20 @@ type RouteConfig struct {
 }
 
 type Route struct {
-	ctx            *context.Context
-	log            zerolog.Logger
-	Parameters     *RouteParameters
-	Routes         map[string]*Route
-	Cache          *cache.Cache
-	Pool           *httpclient.Pool
-	WaitAnswerList map[string]chan struct{}
-	WaiteAnswerMu  map[string]*sync.Mutex
-	Introspect     bool
-	Publisher      publisher.Publisher
-	RefreshTimer   *time.Timer
-	Limits         map[string]LimitTable
-	Route          string
+	ctx                 *context.Context
+	log                 zerolog.Logger
+	Parameters          *RouteParameters
+	Routes              map[string]*Route
+	Cache               *cache.Cache
+	Pool                *httpclient.Pool
+	WaitAnswerList      map[string]chan struct{}
+	WaiteAnswerMu       map[string]*sync.Mutex
+	Introspect          bool
+	IntrospectHydration string
+	Publisher           publisher.Publisher
+	RefreshTimer        *time.Timer
+	Limits              map[string]LimitTable
+	Route               string
 }
 
 func (r *Route) Initilize(
@@ -244,6 +250,7 @@ func (r *Route) Initilize(
 	r.WaitAnswerList = make(map[string]chan struct{})
 	r.WaiteAnswerMu = make(map[string]*sync.Mutex)
 
+	r.Introspect = parameters.Introspect
 	r.Introspect = parameters.Introspect
 
 	if parameters.Refresh.Time > 0 {

@@ -37,11 +37,11 @@ introspector:
   listen: 0.0.0.0:9000
   hydration:
     requestid: true
-    introspect: plaintext # add result of introspection as plaintext in header
   routes:
     /api/v1/:
       parameters:
         introspect: true
+        introspecthydration: plaintext # add result of introspection as plaintext in header
         dsn: http://localhost:9090
         pool:
           size: 20
@@ -77,6 +77,8 @@ introspector:
     /api/v1/users:
       parameters:
         dsn: http://localhost:9091
+        introspect: true
+        introspecthydration: plaintext # add result of introspection as plaintext in header
         pool:
           size: 20
           timeout: 10s
