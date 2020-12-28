@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
+	"github.com/pkg/errors"
 	"github.com/soldatov-s/accp/internal/cache/external"
 	"github.com/soldatov-s/accp/internal/httpclient"
 )
@@ -20,7 +21,7 @@ type Refresh struct {
 type RData struct {
 	Response *Response
 	UUID     uuid.UUID
-	Refresh  Refresh
+	Refresh  *Refresh
 }
 
 func (r *RData) MarshalBinary() (data []byte, err error) {
@@ -58,8 +59,7 @@ func (r *RRData) UnmarshalBinary(data []byte) error {
 	}
 	r.RData.Response = rData.Response
 	r.RData.UUID = rData.UUID
-	r.RData.Refresh.Counter = rData.Refresh.Counter
-	r.RData.Refresh.MaxCount = rData.Refresh.MaxCount
+	r.RData.Refresh = rData.Refresh
 	return nil
 }
 
@@ -123,4 +123,16 @@ func (r *RRData) MuLock() {
 
 func (r *RRData) MuUnlock() {
 	r.Refresh.mu.Unlock()
+}
+
+func (r *RRData) ReadAll(req *http.Request, resp *http.Response) error {
+	if err := r.Request.Read(req); err != nil {
+		return errors.Wrap(err, "failed to read data from request")
+	}
+
+	if err := r.Response.Read(resp); err != nil {
+		return errors.Wrap(err, "failed to read data from response")
+	}
+
+	return nil
 }

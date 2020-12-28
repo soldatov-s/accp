@@ -12,13 +12,6 @@ import (
 
 type empty struct{}
 
-type RedisConfig struct {
-	DSN                   string
-	MinIdleConnections    int
-	MaxOpenedConnections  int
-	MaxConnectionLifetime time.Duration
-}
-
 type RedisClient struct {
 	*rejson.Client
 	ctx    context.Context

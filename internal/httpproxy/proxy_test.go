@@ -1,4 +1,4 @@
-package httpproxy_test
+package httpproxy
 
 import (
 	"io/ioutil"
@@ -11,7 +11,6 @@ import (
 
 	"github.com/soldatov-s/accp/internal/cache/external"
 	context "github.com/soldatov-s/accp/internal/ctx"
-	"github.com/soldatov-s/accp/internal/httpproxy"
 	"github.com/soldatov-s/accp/internal/introspection"
 	"github.com/soldatov-s/accp/internal/publisher"
 	"github.com/soldatov-s/accp/internal/rabbitmq"
@@ -21,6 +20,7 @@ import (
 	testProxyHelpers "github.com/soldatov-s/accp/x/test_helpers/proxy"
 	rabbitMQConsumer "github.com/soldatov-s/accp/x/test_helpers/rabbitmq"
 	resilience "github.com/soldatov-s/accp/x/test_helpers/resilence"
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -96,7 +96,7 @@ func initPublisher(t *testing.T) (string, publisher.Publisher) {
 	return dsn, pub
 }
 
-func initProxy(t *testing.T) *httpproxy.HTTPProxy {
+func initProxy(t *testing.T) *HTTPProxy {
 	err := testhelpers.LoadTestYAML()
 	require.Nil(t, err)
 
@@ -112,10 +112,11 @@ func initProxy(t *testing.T) *httpproxy.HTTPProxy {
 	i, err := introspection.NewIntrospector(ctx, ic)
 	require.Nil(t, err)
 
-	pc, err := testhelpers.LoadTestConfigProxy()
+	var pc *Config
+	err = viper.UnmarshalKey("proxy", &pc)
 	require.Nil(t, err)
 
-	p, err := httpproxy.NewHTTPProxy(ctx, pc, i, nil, nil)
+	p, err := NewHTTPProxy(ctx, pc, i, nil, nil)
 	require.Nil(t, err)
 
 	return p
@@ -128,7 +129,7 @@ func TestNewHTTPProxy(t *testing.T) {
 func TestHTTPProxy_FindRouteByPath(t *testing.T) {
 	p := initProxy(t)
 
-	route := p.FindRouteByPath("/api/v1/users")
+	route := p.routes.FindRouteByPath("/api/v1/users")
 	require.NotNil(t, route)
 
 	t.Logf("route value %+v", route)
@@ -140,7 +141,7 @@ func TestHTTPProxy_FindRouteByHTTPRequest(t *testing.T) {
 	r, err := http.NewRequest("GET", "/api/v1/users", nil)
 	require.Nil(t, err)
 
-	route := p.FindRouteByHTTPRequest(r)
+	route := p.routes.FindRouteByHTTPRequest(r)
 	require.NotNil(t, route)
 
 	t.Logf("route value %+v", route)
@@ -152,7 +153,7 @@ func TestHTTPProxy_FindExcluededRouteByHTTPRequest(t *testing.T) {
 	r, err := http.NewRequest("POST", "/api/v1/users/search", nil)
 	require.Nil(t, err)
 
-	route := p.FindExcludedRouteByHTTPRequest(r)
+	route := p.excluded.FindRouteByHTTPRequest(r)
 	require.NotNil(t, route)
 
 	t.Logf("route value %+v", route)
@@ -208,13 +209,13 @@ func TestHTTPProxy_DefaultHandler(t *testing.T) {
 	r, err := http.NewRequest("POST", "/api/v1/users/search", nil)
 	require.Nil(t, err)
 
-	route := p.FindExcludedRouteByHTTPRequest(r)
+	route := p.excluded.FindRouteByHTTPRequest(r)
 	require.NotNil(t, route)
 
 	t.Logf("route value %+v", route)
 
 	w := httptest.NewRecorder()
-	p.NonCachedHandler(route, w, r)
+	route.NotCached(w, r)
 
 	resp := w.Result()
 	body, _ := ioutil.ReadAll(resp.Body)
@@ -223,29 +224,6 @@ func TestHTTPProxy_DefaultHandler(t *testing.T) {
 	t.Log(resp.StatusCode)
 	t.Log(resp.Header.Get("Content-Type"))
 	t.Log(string(body))
-}
-
-func TestIntrospection(t *testing.T) {
-	server := testProxyHelpers.FakeIntrospectorService(t, testhelpers.IntrospectorHost)
-	server.Start()
-	defer server.Close()
-
-	p := initProxy(t)
-
-	r, err := http.NewRequest("GET", "/api/v1/users", nil)
-	require.Nil(t, err)
-
-	route := p.FindRouteByHTTPRequest(r)
-	require.NotNil(t, route)
-
-	r.Header.Add("Authorization", "bearer "+testProxyHelpers.TestToken)
-
-	err = p.HydrationIntrospect(route, r)
-	require.Nil(t, err)
-
-	r.Header.Set("Authorization", "bearer "+testProxyHelpers.BadToken)
-	err = p.HydrationIntrospect(route, r)
-	require.NotNil(t, err)
 }
 
 func TestHTTPProxy_GetHandler(t *testing.T) {
@@ -258,13 +236,13 @@ func TestHTTPProxy_GetHandler(t *testing.T) {
 	r, err := http.NewRequest("GET", "/api/v1/users", nil)
 	require.Nil(t, err)
 
-	route := p.FindRouteByHTTPRequest(r)
+	route := p.routes.FindRouteByHTTPRequest(r)
 	require.NotNil(t, route)
 
 	t.Logf("route value %+v", route)
 
 	w := httptest.NewRecorder()
-	p.CachedHandler(route, w, r)
+	route.CachedHandler(w, r)
 
 	resp := w.Result()
 	body, _ := ioutil.ReadAll(resp.Body)
@@ -276,7 +254,7 @@ func TestHTTPProxy_GetHandler(t *testing.T) {
 
 	t.Log("take answer from cache")
 	w = httptest.NewRecorder()
-	p.CachedHandler(route, w, r)
+	route.CachedHandler(w, r)
 
 	resp = w.Result()
 	body, _ = ioutil.ReadAll(resp.Body)
@@ -297,7 +275,7 @@ func TestHTTPProxy_GetHandlerExternalCache(t *testing.T) {
 	r, err := http.NewRequest("GET", "/api/v1/users", nil)
 	require.Nil(t, err)
 
-	route := p.FindRouteByHTTPRequest(r)
+	route := p.routes.FindRouteByHTTPRequest(r)
 	require.NotNil(t, route)
 
 	lc, err := testhelpers.LoadTestConfigLogger()
@@ -310,7 +288,7 @@ func TestHTTPProxy_GetHandlerExternalCache(t *testing.T) {
 	require.Nil(t, err)
 
 	w := httptest.NewRecorder()
-	p.CachedHandler(route, w, r)
+	route.CachedHandler(w, r)
 
 	resp := w.Result()
 	body, _ := ioutil.ReadAll(resp.Body)
@@ -329,7 +307,7 @@ func TestHTTPProxy_GetHandlerExternalCache(t *testing.T) {
 
 	t.Log("take answer from cache")
 	w = httptest.NewRecorder()
-	p.CachedHandler(route, w, r)
+	route.CachedHandler(w, r)
 
 	resp = w.Result()
 	body, _ = ioutil.ReadAll(resp.Body)
@@ -357,7 +335,7 @@ func TestMultipleClienRequests(t *testing.T) {
 	r, err := http.NewRequest("GET", "/api/v1/users", nil)
 	require.Nil(t, err)
 
-	route := p.FindRouteByHTTPRequest(r)
+	route := p.routes.FindRouteByHTTPRequest(r)
 	require.NotNil(t, route)
 
 	var wg sync.WaitGroup
@@ -374,7 +352,7 @@ func TestMultipleClienRequests(t *testing.T) {
 
 				t.Log("take answer from cache")
 				w := httptest.NewRecorder()
-				p.CachedHandler(route, w, r)
+				route.CachedHandler(w, r)
 
 				resp := w.Result()
 				body, _ := ioutil.ReadAll(resp.Body)
@@ -417,7 +395,7 @@ func TestHTTPProxy_GetHandlerSendMessageToQueue(t *testing.T) {
 	r, err := http.NewRequest("GET", "/api/v1/users", nil)
 	require.Nil(t, err)
 
-	route := p.FindRouteByHTTPRequest(r)
+	route := p.routes.FindRouteByHTTPRequest(r)
 	require.NotNil(t, route)
 
 	lc, err := testhelpers.LoadTestConfigLogger()
@@ -448,7 +426,7 @@ func TestHTTPProxy_GetHandlerSendMessageToQueue(t *testing.T) {
 	wg.Wait()
 
 	w := httptest.NewRecorder()
-	p.CachedHandler(route, w, r)
+	route.CachedHandler(w, r)
 
 	resp := w.Result()
 	body, _ := ioutil.ReadAll(resp.Body)
@@ -460,7 +438,7 @@ func TestHTTPProxy_GetHandlerSendMessageToQueue(t *testing.T) {
 
 	t.Log("take answer from cache")
 	w = httptest.NewRecorder()
-	p.CachedHandler(route, w, r)
+	route.CachedHandler(w, r)
 
 	resp = w.Result()
 	body, _ = ioutil.ReadAll(resp.Body)
@@ -486,13 +464,13 @@ func TestHTTPProxy_Refresh(t *testing.T) {
 	r, err := http.NewRequest("GET", "/api/v1/users", nil)
 	require.Nil(t, err)
 
-	route := p.FindRouteByHTTPRequest(r)
+	route := p.routes.FindRouteByHTTPRequest(r)
 	require.NotNil(t, route)
 
 	t.Logf("route value %+v", route)
 
 	w := httptest.NewRecorder()
-	p.CachedHandler(route, w, r)
+	route.CachedHandler(w, r)
 
 	resp := w.Result()
 	body, _ := ioutil.ReadAll(resp.Body)
@@ -506,7 +484,7 @@ func TestHTTPProxy_Refresh(t *testing.T) {
 	require.Nil(t, err)
 
 	w = httptest.NewRecorder()
-	p.CachedHandler(route, w, r)
+	route.CachedHandler(w, r)
 
 	resp = w.Result()
 	body, _ = ioutil.ReadAll(resp.Body)
@@ -520,7 +498,7 @@ func TestHTTPProxy_Refresh(t *testing.T) {
 	require.Nil(t, err)
 
 	w = httptest.NewRecorder()
-	p.CachedHandler(route, w, r)
+	route.CachedHandler(w, r)
 
 	resp = w.Result()
 	body, _ = ioutil.ReadAll(resp.Body)
@@ -534,7 +512,7 @@ func TestHTTPProxy_Refresh(t *testing.T) {
 	require.Nil(t, err)
 
 	w = httptest.NewRecorder()
-	p.CachedHandler(route, w, r)
+	route.CachedHandler(w, r)
 
 	resp = w.Result()
 	body, _ = ioutil.ReadAll(resp.Body)
@@ -545,7 +523,7 @@ func TestHTTPProxy_Refresh(t *testing.T) {
 	t.Log(string(body))
 
 	w = httptest.NewRecorder()
-	p.CachedHandler(route, w, r)
+	route.CachedHandler(w, r)
 
 	resp = w.Result()
 	body, _ = ioutil.ReadAll(resp.Body)
@@ -561,7 +539,7 @@ func TestHTTPProxy_Refresh(t *testing.T) {
 	require.Nil(t, err)
 
 	w = httptest.NewRecorder()
-	p.CachedHandler(route, w, r)
+	route.CachedHandler(w, r)
 
 	resp = w.Result()
 	bodyAfterRefresh, _ := ioutil.ReadAll(resp.Body)

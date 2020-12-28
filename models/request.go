@@ -12,6 +12,7 @@ import (
 	"github.com/valyala/bytebufferpool"
 )
 
+// Request describes structure for holding information about request
 type Request struct {
 	URL    string
 	Method string

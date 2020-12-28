@@ -4,12 +4,39 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
+
+	"github.com/soldatov-s/accp/internal/introspection"
+	testctxhelper "github.com/soldatov-s/accp/x/test_helpers/ctx"
+	"github.com/stretchr/testify/require"
 )
 
 const (
-	TestToken = "abcdefg1234567"
-	BadToken  = "bad"
+	TestToken = "goodToken"
+	BadToken  = "badToken"
 )
+
+func InitTestIntrospector(t *testing.T) *introspection.Introspect {
+	ctx := testctxhelper.InitTestCtx(t)
+
+	ic := &introspection.Config{
+		DSN:            "http://localhost:8001",
+		Endpoint:       "/oauth2/introspect",
+		ContentType:    "application/x-www-form-urlencoded",
+		Method:         "POST",
+		ValidMarker:    `"active":true`,
+		BodyTemplate:   `token_type_hint=access_token&token={{.Token}}`,
+		CookieName:     []string{"access-token"},
+		QueryParamName: []string{"access_token"},
+		PoolSize:       50,
+		PoolTimeout:    10 * time.Second,
+	}
+
+	i, err := introspection.NewIntrospector(ctx, ic)
+	require.Nil(t, err)
+
+	return i
+}
 
 func FakeIntrospectorService(t *testing.T, host string) *httptest.Server {
 	handler := func(w http.ResponseWriter, r *http.Request) {
@@ -22,6 +49,7 @@ func FakeIntrospectorService(t *testing.T, host string) *httptest.Server {
 			r.URL.Path == "/oauth2/introspect" &&
 			r.Header.Get("Content-Type") == "application/x-www-form-urlencoded" {
 			err = r.ParseForm()
+			t.Logf("token %s", r.PostForm.Get("token"))
 			if r.PostForm.Get("token") == TestToken {
 				res = []byte(`{"active":true, "subject":"1", "token_type":"access_token"}`)
 				t.Log("it's an active token")

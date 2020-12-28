@@ -71,6 +71,7 @@ func NewIntrospector(ctx *context.Context, cfg *Config) (*Introspect, error) {
 	}
 
 	i.log = ctx.GetPackageLogger(empty{})
+	i.initRegex()
 
 	return i, nil
 }

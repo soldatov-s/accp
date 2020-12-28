@@ -19,7 +19,7 @@
  *
  */
 
-package httpproxy
+package helper
 
 type Arguments []string
 

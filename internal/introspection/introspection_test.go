@@ -2,16 +2,38 @@ package introspection
 
 import (
 	"testing"
+	"time"
 
+	testctxhelper "github.com/soldatov-s/accp/x/test_helpers/ctx"
 	"github.com/stretchr/testify/require"
 )
 
-func TestTrimFields(t *testing.T) {
-	i := Introspect{}
+func initTestIntrospector(t *testing.T) *Introspect {
+	ctx := testctxhelper.InitTestCtx(t)
 
-	i.cfg = &Config{
-		TrimmedFilds: []string{"exp", "iat"},
+	ic := &Config{
+		DSN:            "http://localhost:8001",
+		Endpoint:       "/oauth2/introspect",
+		ContentType:    "application/x-www-form-urlencoded",
+		Method:         "POST",
+		ValidMarker:    `"active":true`,
+		BodyTemplate:   `token_type_hint=access_token&token={{.Token}}`,
+		CookieName:     []string{"access-token"},
+		QueryParamName: []string{"access_token"},
+		PoolSize:       50,
+		PoolTimeout:    10 * time.Second,
 	}
+
+	i, err := NewIntrospector(ctx, ic)
+	require.Nil(t, err)
+
+	return i
+}
+
+func TestTrimFields(t *testing.T) {
+	i := initTestIntrospector(t)
+
+	i.cfg.TrimmedFilds = []string{"exp", "iat"}
 	i.initRegex()
 
 	tests := []struct {

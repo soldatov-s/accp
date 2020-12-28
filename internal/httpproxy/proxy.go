@@ -1,49 +1,30 @@
 package httpproxy
 
 import (
-	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/base64"
-	"fmt"
-	"io"
-	"io/ioutil"
 	"net/http"
-	"net/url"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"github.com/soldatov-s/accp/internal/cache/external"
 	ctxint "github.com/soldatov-s/accp/internal/ctx"
-	"github.com/soldatov-s/accp/internal/httputils"
 	"github.com/soldatov-s/accp/internal/introspection"
 	"github.com/soldatov-s/accp/internal/publisher"
-	accpmodels "github.com/soldatov-s/accp/models"
-	"github.com/valyala/bytebufferpool"
+	"github.com/soldatov-s/accp/internal/routes"
 )
 
 type empty struct{}
-
-type Config struct {
-	Listen    string
-	Hydration struct {
-		RequestID bool
-	}
-	Routes   map[string]*RouteConfig
-	Excluded map[string]*RouteConfig
-}
 
 type HTTPProxy struct {
 	cfg          *Config
 	ctx          *ctxint.Context
 	log          zerolog.Logger
 	srv          *http.Server
-	routes       map[string]*Route
-	excluded     map[string]*Route
+	routes       routes.MapRoutes
+	excluded     routes.MapRoutes
 	introspector introspection.Introspector
 }
 
@@ -70,10 +51,10 @@ func NewHTTPProxy(
 	p.srv.Handler = http.HandlerFunc(p.proxyHandler)
 
 	p.log = ctx.GetPackageLogger(empty{})
-	p.routes = make(map[string]*Route)
-	p.excluded = make(map[string]*Route)
+	p.routes = make(map[string]*routes.Route)
+	p.excluded = make(map[string]*routes.Route)
 
-	if err := p.fillRoutes(ctx, externalStorage, pub, p.cfg.Routes, p.routes, nil, ""); err != nil {
+	if err := p.fillRoutes(ctx, externalStorage, pub, p.introspector, p.cfg.Routes, p.routes, nil, ""); err != nil {
 		return nil, err
 	}
 
@@ -87,9 +68,10 @@ func (p *HTTPProxy) fillRoutes(
 	ctx *ctxint.Context,
 	externalStorage external.Storage,
 	pub publisher.Publisher,
-	rc map[string]*RouteConfig,
-	r map[string]*Route,
-	parentParameters *RouteParameters,
+	introspector introspection.Introspector,
+	rc map[string]*routes.Config,
+	r map[string]*routes.Route,
+	parentParameters *routes.Parameters,
 	parentRoute string,
 ) error {
 	// Sort config map
@@ -105,13 +87,13 @@ func (p *HTTPProxy) fillRoutes(
 		k := strings.Trim(configKey, "/")
 		p.log.Debug().Msgf("parse route \"%s\"", k)
 		// Check for duplicate
-		if p.FindRouteByPath(parentRoute+"/"+k) != nil {
-			p.log.Warn().Msgf("duplicated route: %s", parentRoute+"/"+k)
-			return nil
+		if err := p.routes.FindDuplicated(parentRoute + "/" + k); err != nil {
+			p.log.Warn().Err(err).Msg("duplicated route")
+			return err
 		}
 
-		var previousLevelRoutes map[string]*Route
-		routes := r
+		var previousLevelRoutes map[string]*routes.Route
+		routes1 := r
 		strs := strings.Split(k, "/")
 
 		// For example:
@@ -125,15 +107,15 @@ func (p *HTTPProxy) fillRoutes(
 				continue
 			}
 			p.log.Debug().Msgf("parse path item \"%s\"", s)
-			if route, ok := routes[s]; !ok {
+			if route, ok := routes1[s]; !ok {
 				p.log.Debug().Msgf("create route node \"%s\"", s)
-				routes[s] = &Route{
-					Routes: make(map[string]*Route),
+				routes1[s] = &routes.Route{
+					Routes: make(map[string]*routes.Route),
 				}
-				previousLevelRoutes = routes
-				routes = routes[s].Routes
+				previousLevelRoutes = routes1
+				routes1 = routes1[s].Routes
 			} else {
-				routes = route.Routes
+				routes1 = route.Routes
 			}
 		}
 
@@ -154,7 +136,7 @@ func (p *HTTPProxy) fillRoutes(
 
 		p.log.Debug().Msgf("last part of route \"%s\" is \"%s\"", k, lastPartOfRoute)
 
-		if err := previousLevelRoutes[lastPartOfRoute].Initilize(ctx, parentRoute+"/"+k, parameters, externalStorage, pub); err != nil {
+		if err := previousLevelRoutes[lastPartOfRoute].Initilize(ctx, parentRoute+"/"+k, parameters, externalStorage, pub, introspector); err != nil {
 			return err
 		}
 
@@ -170,6 +152,7 @@ func (p *HTTPProxy) fillRoutes(
 			ctx,
 			externalStorage,
 			pub,
+			introspector,
 			rc[configKey].Routes,
 			previousLevelRoutes[lastPartOfRoute].Routes,
 			parameters,
@@ -184,21 +167,21 @@ func (p *HTTPProxy) fillRoutes(
 
 func (p *HTTPProxy) fillExcludedRoutes(
 	ctx *ctxint.Context,
-	rc *RouteConfig,
+	rc *routes.Config,
 	parentRoute string,
-	parentParameters *RouteParameters,
+	parentParameters *routes.Parameters,
 ) error {
 	for _, route := range rc.Excluded {
 		k := strings.Trim(parentRoute+"/"+route, "/")
 		p.log.Debug().Msgf("parse excluded route \"%s\"", k)
 		// Check for duplicate
-		if p.FindExcludedRouteByPath(k) != nil {
-			p.log.Warn().Msgf("duplicated excluded route: %s", k)
-			return fmt.Errorf("duplicated excluded route: %s", k)
+		if err := p.excluded.FindDuplicated(k); err != nil {
+			p.log.Warn().Err(err).Msg("duplicated route")
+			return err
 		}
 
-		var previousLevelRoutes map[string]*Route
-		routes := p.excluded
+		var previousLevelRoutes map[string]*routes.Route
+		routes1 := p.excluded
 
 		p.log.Debug().Msgf("parse excluded route \"%s\"", k)
 		strs := strings.Split(k, "/")
@@ -207,15 +190,15 @@ func (p *HTTPProxy) fillExcludedRoutes(
 				continue
 			}
 			p.log.Debug().Msgf("parse path item \"%s\"", s)
-			if route, ok := routes[s]; !ok {
+			if route, ok := routes1[s]; !ok {
 				p.log.Debug().Msgf("create excluded route node \"%s\"", s)
-				routes[s] = &Route{
-					Routes: make(map[string]*Route),
+				routes1[s] = &routes.Route{
+					Routes: make(map[string]*routes.Route),
 				}
-				previousLevelRoutes = routes
-				routes = routes[s].Routes
+				previousLevelRoutes = routes1
+				routes1 = routes1[s].Routes
 			} else {
-				routes = route.Routes
+				routes1 = route.Routes
 			}
 		}
 
@@ -230,270 +213,21 @@ func (p *HTTPProxy) fillExcludedRoutes(
 	return nil
 }
 
-func (p *HTTPProxy) findRoute(path string, routes map[string]*Route) *Route {
-	path = strings.Trim(path, "/")
-	strs := strings.Split(path, "/")
-	var (
-		route *Route
-		ok    bool
-	)
-
-	for _, s := range strs {
-		if s == "" {
-			continue
-		}
-		p.log.Debug().Msgf("search path item \"%s\"", s)
-		if route, ok = routes[s]; !ok {
-			return route
-		}
-		routes = route.Routes
-	}
-
-	return route
-}
-
-func (p *HTTPProxy) FindRouteByPath(path string) *Route {
-	return p.findRoute(path, p.routes)
-}
-
-func (p *HTTPProxy) FindRouteByHTTPRequest(r *http.Request) *Route {
-	return p.FindRouteByPath(r.URL.Path)
-}
-
-func (p *HTTPProxy) FindExcludedRouteByPath(path string) *Route {
-	return p.findRoute(path, p.excluded)
-}
-
-func (p *HTTPProxy) FindExcludedRouteByHTTPRequest(r *http.Request) *Route {
-	return p.FindExcludedRouteByPath(r.URL.Path)
-}
-
-// refresh incremets refresh count and checks that we not reached the limit
-func (p *HTTPProxy) refresh(rrdata *accpmodels.RRData, hk string, route *Route) {
-	// Check that we have refresh limit by request count
-	if rrdata.Refresh.MaxCount == 0 {
-		return
-	}
-
-	p.log.Debug().Msgf("refresh cache, key %s, maxCount %d, current count %d", hk, rrdata.Refresh.MaxCount, rrdata.Refresh.Counter)
-
-	rrdata.MuLock()
-	defer rrdata.MuUnlock()
-
-	if err := rrdata.LoadRefreshCounter(hk, route.Cache.External); err != nil {
-		p.log.Err(err).Msg("failed to get refresh-counter from external cache")
-	}
-
-	rrdata.Refresh.Counter++
-
-	if rrdata.Refresh.Counter < rrdata.Refresh.MaxCount {
-		if err := rrdata.UpdateRefreshCounter(hk, route.Cache.External); err != nil {
-			p.log.Err(err).Msg("failed to update refresh counter")
-		}
-		return
-	}
-
-	req, err := rrdata.Request.BuildRequest()
-	if err != nil {
-		p.log.Err(err).Msg("failed to build request")
-		return
-	}
-
-	if err = p.HydrationIntrospect(route, req); err != nil {
-		p.log.Err(err).Msg("introspection failed")
-		if err = route.Cache.Delete(hk); err != nil {
-			p.log.Err(err).Msg("delete key failed")
-		}
-		return
-	}
-
-	client := route.Pool.GetFromPool()
-	if err := rrdata.UpdateByRequest(client, req); err != nil {
-		p.log.Err(err).Msg("failed to update RRdata")
-		if err = route.Cache.Delete(hk); err != nil {
-			p.log.Err(err).Msg("delete key failed")
-		}
-		return
-	}
-
-	rrdata.Refresh.Counter = 0
-	if err := rrdata.UpdateRefreshCounter(hk, route.Cache.External); err != nil {
-		p.log.Err(err).Msg("failed to update refresh counter")
-	}
-
-	p.log.Debug().Msgf("cache refreshed")
-}
-
-func (p *HTTPProxy) responseHandle(rrdata *accpmodels.RRData, w http.ResponseWriter, r *http.Request, hk string, route *Route) {
-	// If get rrdata from redis, request will be empty
-	if rrdata.Request == nil {
-		rrdata.Request = &accpmodels.Request{}
-		if err := rrdata.Request.Read(r); err != nil {
-			p.log.Err(err).Msg("failed to read data from request")
-		}
-	}
-
-	if err := rrdata.Response.Write(w); err != nil {
-		p.log.Err(err).Msg("failed to write data from cache")
-	}
-
-	if err := route.Publish(rrdata.Request); err != nil {
-		p.log.Err(err).Msg("failed to publish data")
-	}
-
-	go p.refresh(rrdata, hk, route)
-}
-
-func (p *HTTPProxy) waitAnswer(w http.ResponseWriter, r *http.Request, hk string, ch chan struct{}, route *Route) {
-	<-ch
-
-	if data, err := route.Cache.Select(hk); err == nil {
-		p.responseHandle(data, w, r, hk, route)
-		return
-	}
-
-	http.Error(w, "failed to get data from cache", http.StatusServiceUnavailable)
-}
-
-func errResponse(errormsg string, code int) *http.Response {
-	resp := &http.Response{
-		StatusCode: code,
-		Body:       ioutil.NopCloser(bytes.NewBufferString(errormsg)),
-	}
-
-	resp.Header = make(http.Header)
-	resp.Header.Set("Content-Type", "text/plain; charset=utf-8")
-	resp.Header.Set("X-Content-Type-Options", "nosniff")
-
-	return resp
-}
-
-func (p *HTTPProxy) CachedHandler(route *Route, w http.ResponseWriter, r *http.Request) {
-	hk, err := p.hashKey(r)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusServiceUnavailable)
-		return
-	}
-
-	// Finding a response to a request in the memory cache
-	if data, err1 := route.Cache.Select(hk); err1 == nil {
-		p.responseHandle(data, w, r, hk, route)
-		return
-	}
-
-	// Check that we not started to handle the request
-	if waitCh, ok := route.WaitAnswerList[hk]; !ok {
-		// If we not started to handle the request we need to add lock-channel to map
-		var (
-			mu *sync.Mutex
-			ok bool
-		)
-		// Create mutex for same requests
-		if mu, ok = route.WaiteAnswerMu[hk]; !ok {
-			mu = &sync.Mutex{}
-			route.WaiteAnswerMu[hk] = mu
-		}
-		mu.Lock()
-		if waitCh1, ok1 := route.WaitAnswerList[hk]; !ok1 {
-			ch := make(chan struct{})
-			route.WaitAnswerList[hk] = ch
-			mu.Unlock() // unlock mutex fast as possible
-
-			// Proxy request to backend
-			client := route.Pool.GetFromPool()
-
-			var resp *http.Response
-			r.URL, err = url.Parse(route.Parameters.DSN + r.URL.String())
-			if err != nil {
-				resp = errResponse(err.Error(), http.StatusServiceUnavailable)
-			} else {
-				// nolint
-				resp, err = client.Do(r)
-				if err != nil {
-					resp = errResponse(err.Error(), http.StatusServiceUnavailable)
-				}
-			}
-			defer resp.Body.Close()
-
-			rrData := accpmodels.NewRRData()
-			if err := rrData.Request.Read(r); err != nil {
-				p.log.Err(err).Msg("failed to read data from request")
-			}
-
-			rrData.Refresh.MaxCount = route.Parameters.Refresh.Count
-
-			if err := rrData.Response.Read(resp); err != nil {
-				p.log.Err(err).Msg("failed to read data from response")
-			}
-
-			if err := rrData.Response.Write(w); err != nil {
-				p.log.Err(err).Msg("failed to write data to client from response")
-			}
-
-			// Save answer to mem cache
-			if err := route.Cache.Add(hk, rrData); err != nil {
-				p.log.Err(err).Msg("failed to save data to cache")
-			}
-
-			close(ch)
-			delete(route.WaitAnswerList, hk)
-			// Delete removes only item from map, GC remove mutex after removed all references to it.
-			delete(route.WaiteAnswerMu, hk)
-		} else {
-			mu.Unlock()
-			p.waitAnswer(w, r, hk, waitCh1, route)
-		}
-	} else {
-		p.waitAnswer(w, r, hk, waitCh, route)
-	}
-}
-
-// NonCachedHandler is handler for proxy requests to excluded routes and routes whitch not need to cache
-func (p *HTTPProxy) NonCachedHandler(route *Route, w http.ResponseWriter, r *http.Request) {
-	// Proxy request to backend
-	client := route.Pool.GetFromPool()
-
-	var err error
-	r.URL, err = url.Parse(route.Parameters.DSN + r.URL.String())
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusServiceUnavailable)
-		return
-	}
-
-	p.log.Debug().Msg(r.URL.String())
-
-	resp, err := client.Do(r)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusServiceUnavailable)
-		return
-	}
-	defer resp.Body.Close()
-
-	httputils.CopyHeader(w.Header(), resp.Header)
-	w.WriteHeader(resp.StatusCode)
-
-	_, err = io.Copy(w, resp.Body)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusServiceUnavailable)
-		return
-	}
-}
-
 func (p *HTTPProxy) proxyHandler(w http.ResponseWriter, r *http.Request) {
 	// Handle excluded routes
-	route := p.FindExcludedRouteByHTTPRequest(r)
+	route := p.excluded.FindRouteByHTTPRequest(r)
 	if route != nil {
-		p.NonCachedHandler(route, w, r)
+		route.NotCached(w, r)
 		return
 	}
 
-	route = p.FindRouteByHTTPRequest(r)
+	route = p.routes.FindRouteByHTTPRequest(r)
 
 	// Adding to request header the requestID
 	p.HydrationID(r)
 
 	// The check an authorization token
-	err := p.HydrationIntrospect(route, r)
+	err := route.HydrationIntrospect(r)
 	if _, ok := err.(*introspection.ErrTokenInactive); ok {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
@@ -512,30 +246,15 @@ func (p *HTTPProxy) proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if route.Parameters.Cache.Disabled {
-		p.NonCachedHandler(route, w, r)
+		route.NotCached(w, r)
 		return
 	}
 
 	if route.Parameters.Methods.Has(r.Method) {
-		p.CachedHandler(route, w, r)
+		route.CachedHandler(w, r)
 		return
 	}
-	p.NonCachedHandler(route, w, r)
-}
-
-func (p *HTTPProxy) hashKey(r *http.Request) (string, error) {
-	buf := bytebufferpool.Get()
-	if r.Body != nil {
-		if _, err := io.Copy(buf, r.Body); err != nil {
-			return "", err
-		}
-	}
-
-	introspectBody := r.Header.Get("accp-introspect-body")
-
-	p.log.Debug().Msgf("request: %s; body: %s, introspectBody: %s", r.URL.RequestURI(), buf.String(), introspectBody)
-	sum := sha256.New().Sum([]byte(r.URL.RequestURI() + buf.String() + introspectBody))
-	return base64.URLEncoding.EncodeToString(sum), nil
+	route.NotCached(w, r)
 }
 
 func (p *HTTPProxy) HydrationID(r *http.Request) {
@@ -553,33 +272,6 @@ func (p *HTTPProxy) HydrationID(r *http.Request) {
 		r.Header.Del("x-request-id")
 		r.Header.Add("x-request-id", newUUID.String())
 	}
-}
-
-func (p *HTTPProxy) HydrationIntrospect(route *Route, r *http.Request) error {
-	if p.introspector == nil || !route.Introspect {
-		p.log.Debug().Msgf("no introspector or disabled introspection: %s", route.Route)
-		return nil
-	}
-
-	content, err := p.introspector.IntrospectRequest(r)
-	if err != nil {
-		return err
-	}
-
-	var str string
-	switch route.IntrospectHydration {
-	case "nothing":
-		return nil
-	case "plaintext":
-		str = strings.ReplaceAll(strings.ReplaceAll(string(content), "\"", "\\\""), "\n", "")
-	case "base64":
-		str = base64.StdEncoding.EncodeToString(content)
-	}
-
-	r.Header.Add("accp-introspect-body", str)
-	p.log.Debug().Msgf("accp-introspect-body header: %s", r.Header.Get("accp-introspect-body"))
-
-	return nil
 }
 
 func (p *HTTPProxy) Start() {
