@@ -13,6 +13,14 @@ type Limit struct {
 
 type LimitTable map[interface{}]*Limit
 
+func NewLimits(limitCfg map[string]*LimitConfig) map[string]LimitTable {
+	l := make(map[string]LimitTable)
+	for k := range limitCfg {
+		l[k] = make(LimitTable)
+	}
+	return l
+}
+
 func (l *Limit) LoadLimit(name, key string, externalStorage *external.Cache) error {
 	if externalStorage != nil {
 		if err := externalStorage.JSONGet(key, name+".counter", &l.Counter); err != nil {

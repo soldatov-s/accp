@@ -84,7 +84,7 @@ func TestRoute_GetLimitsFromRequest(t *testing.T) {
 
 	r.Header.Add("Authorization", "bearer "+testProxyHelpers.TestToken)
 
-	l := route.GetLimitsFromRequest(r)
+	l := route.getLimitsFromRequest(r)
 
 	require.Equal(t, l["token"], testProxyHelpers.TestToken)
 }

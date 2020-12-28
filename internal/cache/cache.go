@@ -8,6 +8,7 @@ import (
 	"github.com/soldatov-s/accp/internal/cache/cacheerrs"
 	"github.com/soldatov-s/accp/internal/cache/external"
 	"github.com/soldatov-s/accp/internal/cache/memory"
+	context "github.com/soldatov-s/accp/internal/ctx"
 	accpmodels "github.com/soldatov-s/accp/models"
 )
 
@@ -64,6 +65,23 @@ type Cache struct {
 	External       *external.Cache
 	WaitAnswerList map[string]chan struct{}
 	WaiteAnswerMu  map[string]*sync.Mutex
+}
+
+func NewCache(ctx *context.Context, cfg *Config, externalStorage external.Storage) (*Cache, error) {
+	var err error
+	c := &Cache{}
+
+	c.Mem, err = memory.NewCache(ctx, cfg.Memory)
+	if err != nil {
+		return nil, err
+	}
+
+	c.External, err = external.NewCache(ctx, cfg.External, externalStorage)
+	if err != nil {
+		return nil, err
+	}
+
+	return c, nil
 }
 
 func (c *Cache) Add(key string, data cachedata.CacheData) error {

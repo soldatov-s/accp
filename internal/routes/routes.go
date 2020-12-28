@@ -14,7 +14,6 @@ import (
 	"github.com/soldatov-s/accp/internal/cache"
 	"github.com/soldatov-s/accp/internal/cache/cachedata"
 	"github.com/soldatov-s/accp/internal/cache/external"
-	"github.com/soldatov-s/accp/internal/cache/memory"
 	context "github.com/soldatov-s/accp/internal/ctx"
 	"github.com/soldatov-s/accp/internal/httpclient"
 	"github.com/soldatov-s/accp/internal/httputils"
@@ -58,45 +57,23 @@ func (r *Route) Initilize(
 	introspector introspection.Introspector,
 ) error {
 	var err error
-	r.ctx = ctx
-	r.log = ctx.GetPackageLogger(empty{})
-	r.Parameters = parameters
+	r.InitilizeExcluded(ctx, route, parameters)
 
-	r.Cache = &cache.Cache{}
-
-	r.Cache.Mem, err = memory.NewCache(ctx, parameters.Cache.Memory)
-	if err != nil {
-		return err
-	}
-
-	r.Cache.External, err = external.NewCache(ctx, parameters.Cache.External, externalStorage)
-	if err != nil {
+	if r.Cache, err = cache.NewCache(ctx, parameters.Cache, externalStorage); err != nil {
 		return err
 	}
 
 	r.Publisher = pub
-
 	r.Introspector = introspector
-
 	r.Pool = httpclient.NewPool(parameters.Pool.Size, parameters.Pool.Timeout)
-
 	r.WaitAnswerList = make(map[string]chan struct{})
 	r.WaiteAnswerMu = make(map[string]*sync.Mutex)
-
-	r.Introspect = parameters.Introspect
+	r.Limits = limits.NewLimits(r.Parameters.Limits)
 	r.Introspect = parameters.Introspect
 
 	if parameters.Refresh.Time > 0 {
 		r.RefreshTimer = time.AfterFunc(parameters.Refresh.Time, r.RefreshHandler)
 	}
-
-	// Load limits
-	r.Limits = make(map[string]limits.LimitTable)
-	for k := range r.Parameters.Limits {
-		r.Limits[k] = make(limits.LimitTable)
-	}
-
-	r.Route = route
 
 	return nil
 }
@@ -113,7 +90,7 @@ func (r *Route) InitilizeExcluded(
 	r.Route = route
 }
 
-func (r *Route) GetLimitsFromRequest(req *http.Request) map[string]interface{} {
+func (r *Route) getLimitsFromRequest(req *http.Request) map[string]interface{} {
 	limitList := make(map[string]interface{})
 
 	for k, v := range r.Parameters.Limits {
@@ -210,7 +187,7 @@ func (r *Route) CheckLimits(req *http.Request) (*bool, error) {
 		return &result, nil
 	}
 
-	limitList := r.GetLimitsFromRequest(req)
+	limitList := r.getLimitsFromRequest(req)
 	if len(limitList) == 0 {
 		return &result, nil
 	}
