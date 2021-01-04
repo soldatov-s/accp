@@ -1,42 +1,26 @@
 package admin
 
 import (
-	"context"
 	"net/http"
 	"net/http/pprof"
-	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog"
 	ctxint "github.com/soldatov-s/accp/internal/ctx"
+	"github.com/soldatov-s/accp/internal/httpsrv"
 )
 
-type Config struct {
-	Listen string
-	Pprof  bool
-}
-
-type Server struct {
+type Admin struct {
 	cfg *Config
 	ctx *ctxint.Context
 	log zerolog.Logger
-	srv *http.Server
+	srv *httpsrv.Server
 }
 
-func NewAdmin(
-	ctx *ctxint.Context,
-	cfg *Config,
-) (*Server, error) {
-	a := &Server{
+func NewAdmin(ctx *ctxint.Context, cfg *Config) (*Admin, error) {
+	a := &Admin{
 		ctx: ctx,
 		cfg: cfg,
-	}
-
-	a.srv = &http.Server{
-		Addr:           cfg.Listen,
-		ReadTimeout:    10 * time.Second,
-		WriteTimeout:   10 * time.Second,
-		MaxHeaderBytes: 1 << 20,
 	}
 
 	r := http.NewServeMux()
@@ -56,12 +40,12 @@ func NewAdmin(
 		r.HandleFunc("/debug/pprof/trace", pprof.Trace)
 	}
 
-	a.srv.Handler = r
+	a.srv = httpsrv.NewHTTPServer(cfg.Listen, r)
 
 	return a, nil
 }
 
-func (a *Server) aliveHandler(w http.ResponseWriter, _ *http.Request) {
+func (a *Admin) aliveHandler(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Header().Add("Content-Type", "application/json")
 	_, err := w.Write([]byte("{\"result\":\"ok\"}"))
@@ -70,11 +54,11 @@ func (a *Server) aliveHandler(w http.ResponseWriter, _ *http.Request) {
 	}
 }
 
-func (a *Server) Start() {
+func (a *Admin) Start() {
 	a.log.Debug().Msg("start admin server")
 	a.log.Fatal().Err(a.srv.ListenAndServe()).Msg("failed to start admin server")
 }
 
-func (a *Server) Shutdown() error {
-	return a.srv.Shutdown(context.Background())
+func (a *Admin) Shutdown() error {
+	return a.srv.Shutdown()
 }

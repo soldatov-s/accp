@@ -47,13 +47,10 @@ func initRouteParameters(t *testing.T) *Parameters {
 
 func initRoute(t *testing.T) *Route {
 	var err error
-	r := &Route{
-		Routes: make(map[string]*Route),
-	}
 
 	ctx := testctxhelper.InitTestCtx(t)
-
-	parameters := initRouteParameters(t)
+	params := initRouteParameters(t)
+	r := NewRoute(ctx, "/api/v1/users", params)
 
 	ic := &introspection.Config{
 		DSN:            "http://localhost:8001",
@@ -64,14 +61,16 @@ func initRoute(t *testing.T) *Route {
 		BodyTemplate:   `token_type_hint=access_token&token={{.Token}}`,
 		CookieName:     []string{"access-token"},
 		QueryParamName: []string{"access_token"},
-		PoolSize:       50,
-		PoolTimeout:    10 * time.Second,
+		Pool: &httpclient.PoolConfig{
+			Size:    50,
+			Timeout: 10 * time.Second,
+		},
 	}
 
 	i, err := introspection.NewIntrospector(ctx, ic)
 	require.Nil(t, err)
 
-	err = r.Initilize(ctx, "/api/v1/users", parameters, nil, nil, i)
+	err = r.Initilize(nil, nil, i)
 	require.Nil(t, err)
 
 	return r

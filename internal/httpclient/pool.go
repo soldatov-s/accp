@@ -3,7 +3,6 @@ package httpclient
 import (
 	"net"
 	"net/http"
-	"time"
 )
 
 type Pool struct {
@@ -11,13 +10,13 @@ type Pool struct {
 	netTransport *http.Transport
 }
 
-func NewPool(size int, timeout time.Duration) *Pool {
+func NewPool(poolCfg *PoolConfig) *Pool {
 	p := &Pool{}
-	p.ch = make(chan *Client, size)
+	p.ch = make(chan *Client, poolCfg.Size)
 
 	clientTimeout := defaultClientTimeout
-	if timeout > 0 {
-		clientTimeout = timeout
+	if poolCfg.Timeout > 0 {
+		clientTimeout = poolCfg.Timeout
 	}
 
 	dialer := &net.Dialer{
@@ -34,8 +33,8 @@ func NewPool(size int, timeout time.Duration) *Pool {
 		ResponseHeaderTimeout: clientTimeout,
 	}
 
-	for i := 0; i < size; i++ {
-		p.ch <- NewPoolClient(timeout, p.netTransport)
+	for i := 0; i < poolCfg.Size; i++ {
+		p.ch <- NewPoolClient(poolCfg.Timeout, p.netTransport)
 	}
 	return p
 }

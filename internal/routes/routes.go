@@ -39,55 +39,51 @@ type Route struct {
 	Pool                *httpclient.Pool
 	WaitAnswerList      map[string]chan struct{}
 	WaiteAnswerMu       map[string]*sync.Mutex
-	Introspect          bool
 	IntrospectHydration string
 	Publisher           publisher.Publisher
 	RefreshTimer        *time.Timer
 	Limits              map[string]limits.LimitTable
 	Route               string
 	Introspector        introspection.Introspector
+	Excluded            bool
+	Introspect          bool
+}
+
+func NewRoute(ctx *context.Context, routeName string, params *Parameters) *Route {
+	return &Route{
+		ctx:        ctx,
+		log:        ctx.GetPackageLogger(empty{}),
+		Parameters: params,
+		Route:      routeName,
+		Routes:     make(MapRoutes),
+	}
 }
 
 func (r *Route) Initilize(
-	ctx *context.Context,
-	route string,
-	parameters *Parameters,
 	externalStorage external.Storage,
 	pub publisher.Publisher,
 	introspector introspection.Introspector,
 ) error {
 	var err error
-	r.InitilizeExcluded(ctx, route, parameters)
 
-	if r.Cache, err = cache.NewCache(ctx, parameters.Cache, externalStorage); err != nil {
+	r.Pool = httpclient.NewPool(r.Parameters.Pool)
+
+	if r.Cache, err = cache.NewCache(r.ctx, r.Parameters.Cache, externalStorage); err != nil {
 		return err
 	}
 
 	r.Publisher = pub
 	r.Introspector = introspector
-	r.Pool = httpclient.NewPool(parameters.Pool.Size, parameters.Pool.Timeout)
 	r.WaitAnswerList = make(map[string]chan struct{})
 	r.WaiteAnswerMu = make(map[string]*sync.Mutex)
 	r.Limits = limits.NewLimits(r.Parameters.Limits)
-	r.Introspect = parameters.Introspect
+	r.Introspect = r.Parameters.Introspect
 
-	if parameters.Refresh.Time > 0 {
-		r.RefreshTimer = time.AfterFunc(parameters.Refresh.Time, r.RefreshHandler)
+	if r.Parameters.Refresh.Time > 0 {
+		r.RefreshTimer = time.AfterFunc(r.Parameters.Refresh.Time, r.RefreshHandler)
 	}
 
 	return nil
-}
-
-func (r *Route) InitilizeExcluded(
-	ctx *context.Context,
-	route string,
-	parameters *Parameters,
-) {
-	r.ctx = ctx
-	r.log = ctx.GetPackageLogger(empty{})
-	r.Parameters = parameters
-	r.Pool = httpclient.NewPool(parameters.Pool.Size, parameters.Pool.Timeout)
-	r.Route = route
 }
 
 func (r *Route) getLimitsFromRequest(req *http.Request) map[string]interface{} {

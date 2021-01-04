@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/soldatov-s/accp/internal/httpclient"
 	testctxhelper "github.com/soldatov-s/accp/x/test_helpers/ctx"
 	"github.com/stretchr/testify/require"
 )
@@ -20,8 +21,10 @@ func initTestIntrospector(t *testing.T) *Introspect {
 		BodyTemplate:   `token_type_hint=access_token&token={{.Token}}`,
 		CookieName:     []string{"access-token"},
 		QueryParamName: []string{"access_token"},
-		PoolSize:       50,
-		PoolTimeout:    10 * time.Second,
+		Pool: &httpclient.PoolConfig{
+			Size:    50,
+			Timeout: 10 * time.Second,
+		},
 	}
 
 	i, err := NewIntrospector(ctx, ic)

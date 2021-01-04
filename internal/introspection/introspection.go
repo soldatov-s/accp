@@ -8,7 +8,6 @@ import (
 	"regexp"
 	"strings"
 	"text/template"
-	"time"
 
 	"github.com/rs/zerolog"
 	context "github.com/soldatov-s/accp/internal/ctx"
@@ -40,10 +39,8 @@ type Config struct {
 	CookieName []string
 	// QueryParamName is a list of query parameter where may be stored access token
 	QueryParamName []string
-	// PoolSize - size of pool httpclients for introspection requests
-	PoolSize int
-	// PoolTimeout - timeout of httpclients for introspection requests
-	PoolTimeout time.Duration
+	// Pool is config for http clients pool
+	Pool *httpclient.PoolConfig
 }
 
 type Introspector interface {
@@ -63,7 +60,7 @@ type Introspect struct {
 func NewIntrospector(ctx *context.Context, cfg *Config) (*Introspect, error) {
 	i := &Introspect{ctx: ctx, cfg: cfg}
 
-	i.pool = httpclient.NewPool(i.cfg.PoolSize, i.cfg.PoolTimeout)
+	i.pool = httpclient.NewPool(i.cfg.Pool)
 	var err error
 	i.bodyTmpl, err = template.New("body").Parse(i.cfg.BodyTemplate)
 	if err != nil {
