@@ -2,87 +2,98 @@ package limits
 
 import (
 	"encoding/json"
+	"sync"
+	"time"
 
 	"github.com/soldatov-s/accp/internal/cache/external"
 )
 
+// Limit is a current state of a limited parameter from http request
 type Limit struct {
-	Counter    int
-	LastAccess int64 // Unix time
+	Counter    int   `json:"counter"`
+	LastAccess int64 `json:"lastaccess"` // Unix time
 }
 
-type LimitTable map[interface{}]*Limit
+// LimitTable contains multiple parameters from requests and their current limits
+// e.g. we set limit for authorization tokens, we recive the multiple requsts with
+// different tokens. LimitTable will be contain each token and its current state of limit
+type LimitTable struct {
+	List       sync.Map
+	clearTimer *time.Timer
+	PT         time.Duration
+}
 
-func NewLimits(limitCfg map[string]*LimitConfig) map[string]LimitTable {
-	l := make(map[string]LimitTable)
-	for k := range limitCfg {
-		l[k] = make(LimitTable)
+func NewLimitTable(c *Config) *LimitTable {
+	lt := &LimitTable{
+		PT: c.PT,
+	}
+
+	lt.clearTimer = time.AfterFunc(lt.PT, lt.clearTable)
+	return lt
+}
+
+func (lt *LimitTable) clearTable() {
+	timeNow := time.Now().UTC()
+	lt.List.Range(func(k, v interface{}) bool {
+		if time.Unix(v.(*Limit).LastAccess, 0).UTC().Sub(timeNow) > lt.PT {
+			lt.List.Delete(k)
+		}
+		return true
+	})
+
+	lt.clearTimer.Reset(lt.PT)
+}
+
+func NewLimits(lc MapConfig) map[string]*LimitTable {
+	l := make(map[string]*LimitTable)
+	for k, c := range lc {
+		l[k] = NewLimitTable(c)
 	}
 	return l
 }
 
-func (l *Limit) LoadLimit(name, key string, externalStorage *external.Cache) error {
-	if externalStorage != nil {
-		if err := externalStorage.JSONGet(key, name+".counter", &l.Counter); err != nil {
-			return err
-		}
-		if err := externalStorage.JSONGet(key, name+".lastaccess", &l.LastAccess); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (l *Limit) marshal() (counterData, lastAccessData []byte, err error) {
-	if counterData, err = json.Marshal(&l.Counter); err != nil {
-		return nil, nil, err
-	}
-
-	if lastAccessData, err = json.Marshal(&l.LastAccess); err != nil {
-		return nil, nil, err
-	}
-
-	return
-}
-
-func (l *Limit) UpdateLimit(route, key string, externalStorage *external.Cache) error {
-	if externalStorage == nil {
-		return nil
-	}
-	counterData, lastAccessData, err := l.marshal()
-	if err != nil {
-		return err
-	}
-
-	if err := externalStorage.JSONSet(route, key+".counter", string(counterData)); err != nil {
-		return err
-	}
-
-	if err := externalStorage.JSONSet(route, key+".lastaccess", string(lastAccessData)); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (l *Limit) CreateLimit(route, key string, externalStorage *external.Cache) error {
+func (l *Limit) LoadLimit(route, key string, externalStorage *external.Cache) error {
 	if externalStorage == nil {
 		return nil
 	}
 
-	counterData, lastAccessData, err := l.marshal()
-	if err != nil {
-		return err
-	}
-
-	if err := externalStorage.JSONSetNX(route, key+".counter", string(counterData)); err != nil {
-		return err
-	}
-
-	if err := externalStorage.JSONSetNX(route, key+".lastaccess", string(lastAccessData)); err != nil {
+	if err := externalStorage.JSONGet(key+"_"+route, ".", l); err != nil {
 		return err
 	}
 
 	return nil
+}
+
+func (l *Limit) UpdateLimit(route, key string, externalStorage *external.Cache, ttl time.Duration) error {
+	if externalStorage == nil {
+		return nil
+	}
+
+	limitData, err := json.Marshal(l)
+	if err != nil {
+		return err
+	}
+
+	if err := externalStorage.ExternalStorage.JSONSet(key+"_"+route, ".", string(limitData)); err != nil {
+		return err
+	}
+
+	return externalStorage.ExternalStorage.Expire(key+"_"+route, ttl)
+}
+
+func (l *Limit) CreateLimit(route, key string, externalStorage *external.Cache, ttl time.Duration) error {
+	if externalStorage == nil {
+		return nil
+	}
+
+	limitData, err := json.Marshal(l)
+	if err != nil {
+		return err
+	}
+
+	if err := externalStorage.JSONSetNX(key+"_"+route, ".", string(limitData)); err != nil {
+		return err
+	}
+
+	return externalStorage.ExternalStorage.Expire(key+"_"+route, ttl)
 }

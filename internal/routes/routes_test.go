@@ -9,6 +9,7 @@ import (
 	"github.com/soldatov-s/accp/internal/cache/memory"
 	"github.com/soldatov-s/accp/internal/httpclient"
 	"github.com/soldatov-s/accp/internal/introspection"
+	"github.com/soldatov-s/accp/internal/limits"
 	"github.com/soldatov-s/accp/internal/routes/refresh"
 	testctxhelper "github.com/soldatov-s/accp/x/test_helpers/ctx"
 	testProxyHelpers "github.com/soldatov-s/accp/x/test_helpers/proxy"
@@ -83,7 +84,7 @@ func TestRoute_GetLimitsFromRequest(t *testing.T) {
 
 	r.Header.Add("Authorization", "bearer "+testProxyHelpers.TestToken)
 
-	l := route.getLimitsFromRequest(r)
+	l := limits.NewLimitedParamsOfRequest(route.Parameters.Limits, r)
 
 	require.Equal(t, l["token"], testProxyHelpers.TestToken)
 }

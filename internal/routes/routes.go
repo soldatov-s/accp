@@ -31,22 +31,21 @@ const (
 type empty struct{}
 
 type Route struct {
-	ctx                 *context.Context
-	log                 zerolog.Logger
-	Parameters          *Parameters
-	Routes              map[string]*Route
-	Cache               *cache.Cache
-	Pool                *httpclient.Pool
-	WaitAnswerList      map[string]chan struct{}
-	WaiteAnswerMu       map[string]*sync.Mutex
-	IntrospectHydration string
-	Publisher           publisher.Publisher
-	RefreshTimer        *time.Timer
-	Limits              map[string]limits.LimitTable
-	Route               string
-	Introspector        introspection.Introspector
-	Excluded            bool
-	Introspect          bool
+	ctx            *context.Context
+	log            zerolog.Logger
+	Parameters     *Parameters
+	Routes         map[string]*Route
+	Cache          *cache.Cache
+	Pool           *httpclient.Pool
+	WaitAnswerList map[string]chan struct{}
+	WaiteAnswerMu  map[string]*sync.Mutex
+	Publisher      publisher.Publisher
+	RefreshTimer   *time.Timer
+	Limits         map[string]*limits.LimitTable
+	Route          string
+	Introspector   introspection.Introspector
+	Excluded       bool
+	Introspect     bool
 }
 
 func NewRoute(ctx *context.Context, routeName string, params *Parameters) *Route {
@@ -86,46 +85,14 @@ func (r *Route) Initilize(
 	return nil
 }
 
-func (r *Route) getLimitsFromRequest(req *http.Request) map[string]interface{} {
-	limitList := make(map[string]interface{})
-
-	for k, v := range r.Parameters.Limits {
-		for _, vv := range v.Header {
-			if h := req.Header.Get(vv); h != "" {
-				if strings.EqualFold(vv, "authorization") {
-					splitToken := strings.Split(h, " ")
-					if len(splitToken) < 2 {
-						h = splitToken[0]
-					} else {
-						h = splitToken[1]
-					}
-				}
-				// Always taken client IP
-				if strings.EqualFold(vv, "x-forwarded-for") {
-					splitIP := strings.Split(h, ",")
-					h = splitIP[0]
-				}
-				limitList[strings.ToLower(k)] = h
-			}
-		}
-
-		for _, vv := range v.Cookie {
-			if c, err := req.Cookie(vv); err == nil {
-				limitList[strings.ToLower(k)] = c.Value
-			}
-		}
-	}
-
-	return limitList
-}
-
-func (r *Route) checkLimit(k string, v interface{}, result *bool) error {
-	if vv, ok := (r.Limits[k])[v]; !ok {
-		r.Limits[k][v] = &limits.Limit{
+// checkLimit checks limit
+func (r *Route) checkLimit(k, v string, result *bool) error {
+	if vv, ok := (r.Limits[k]).List.Load(v); !ok {
+		r.Limits[k].List.Store(v, &limits.Limit{
 			Counter:    1,
 			LastAccess: time.Now().Unix(),
-		}
-		if err := vv.CreateLimit(r.Route, k, r.Cache.External); err != nil {
+		})
+		if err := vv.(*limits.Limit).CreateLimit(r.Route, k, r.Cache.External, r.Limits[k].PT); err != nil {
 			return err
 		}
 	} else {
@@ -150,24 +117,24 @@ func (r *Route) checkLimit(k string, v interface{}, result *bool) error {
 			return err
 		}
 
-		if err := vv.LoadLimit(r.Route, k, r.Cache.External); err != nil {
+		if err := vv.(*limits.Limit).LoadLimit(r.Route, k, r.Cache.External); err != nil {
 			r.log.Err(err).Msgf("failed to get limit %s from external cache", k)
 		}
 
-		vv.Counter++
+		vv.(*limits.Limit).Counter++
 
-		if vv.Counter >= r.Parameters.Limits[k].Counter &&
-			time.Now().Add(-r.Parameters.Limits[k].PT).Unix() < vv.LastAccess {
+		if vv.(*limits.Limit).Counter >= r.Parameters.Limits[k].Counter &&
+			time.Now().Add(-r.Parameters.Limits[k].PT).Unix() < vv.(*limits.Limit).LastAccess {
 			*result = *result && false
 			r.log.Debug().Msgf("limit reached: %s", k)
 			return nil
-		} else if time.Now().Add(-r.Parameters.Limits[k].PT).Unix() >= vv.LastAccess {
-			vv.Counter = 1
-			vv.LastAccess = time.Now().Unix()
+		} else if time.Now().Add(-r.Parameters.Limits[k].PT).Unix() >= vv.(*limits.Limit).LastAccess {
+			vv.(*limits.Limit).Counter = 1
+			vv.(*limits.Limit).LastAccess = time.Now().Unix()
 		}
 
 		go func() {
-			if err := vv.UpdateLimit(r.Route, k, r.Cache.External); err != nil {
+			if err := vv.(*limits.Limit).UpdateLimit(r.Route, k, r.Cache.External, r.Limits[k].PT); err != nil {
 				r.log.Err(err).Msgf("failed to update limit %s in external cache", k)
 			}
 		}()
@@ -183,7 +150,7 @@ func (r *Route) CheckLimits(req *http.Request) (*bool, error) {
 		return &result, nil
 	}
 
-	limitList := r.getLimitsFromRequest(req)
+	limitList := limits.NewLimitedParamsOfRequest(r.Parameters.Limits, req)
 	if len(limitList) == 0 {
 		return &result, nil
 	}
@@ -234,6 +201,7 @@ func (r *Route) RequestToBack(w http.ResponseWriter, req *http.Request) *accpmod
 	var err error
 	// Proxy request to backend
 	client := r.Pool.GetFromPool()
+	defer r.Pool.PutToPool(client)
 
 	var resp *http.Response
 	req.URL, err = url.Parse(r.Parameters.DSN + req.URL.String())
@@ -268,8 +236,8 @@ func (r *Route) RequestToBack(w http.ResponseWriter, req *http.Request) *accpmod
 
 // NotCached is handler for proxy requests to excluded routes and routes which not need to cache
 func (r *Route) NotCached(w http.ResponseWriter, req *http.Request) {
-	// Proxy request to backend
 	client := r.Pool.GetFromPool()
+	defer r.Pool.PutToPool(client)
 
 	var err error
 	req.URL, err = url.Parse(r.Parameters.DSN + req.URL.String())
@@ -317,7 +285,7 @@ func (r *Route) HydrationIntrospect(req *http.Request) error {
 	}
 
 	var str string
-	switch r.IntrospectHydration {
+	switch r.Parameters.IntrospectHydration {
 	case "nothing":
 		return nil
 	case "plaintext":
@@ -372,6 +340,7 @@ func (r *Route) refresh(rrdata *accpmodels.RRData, hk string) {
 	}
 
 	client := r.Pool.GetFromPool()
+	defer r.Pool.PutToPool(client)
 	if err := rrdata.UpdateByRequest(client, req); err != nil {
 		r.log.Err(err).Msg("failed to update RRdata")
 		if err = r.Cache.Delete(hk); err != nil {

@@ -14,7 +14,7 @@ import (
 type Parameters struct {
 	DSN      string
 	TTL      time.Duration
-	Limits   map[string]*limits.LimitConfig
+	Limits   limits.MapConfig
 	Refresh  *refresh.Config
 	Cache    *cache.Config
 	Pool     *httpclient.PoolConfig
@@ -55,13 +55,7 @@ func (rp *Parameters) Initilize() error {
 	}
 
 	if rp.Limits == nil {
-		rp.Limits = make(map[string]*limits.LimitConfig)
-		rp.Limits["token"] = &limits.LimitConfig{
-			Header: []string{"Authorization"},
-		}
-		rp.Limits["ip"] = &limits.LimitConfig{
-			Header: []string{"X-Forwarded-For"},
-		}
+		rp.Limits = limits.NewMapConfig()
 	}
 
 	return nil
@@ -117,18 +111,7 @@ func (rp *Parameters) Merge(target *Parameters) *Parameters {
 	}
 
 	if target.Limits != nil {
-		result.Limits = make(map[string]*limits.LimitConfig)
-		for k, v := range rp.Limits {
-			result.Limits[k] = v
-		}
-
-		for k, v := range target.Limits {
-			if limit, ok := result.Limits[k]; !ok {
-				result.Limits[k] = v
-			} else {
-				result.Limits[k] = limit.Merge(v)
-			}
-		}
+		result.Limits = rp.Limits.Merge(target.Limits)
 	}
 
 	if target.RouteKey != "" {

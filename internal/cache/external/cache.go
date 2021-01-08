@@ -34,7 +34,7 @@ type Cache struct {
 	ctx             *context.Context
 	cfg             *CacheConfig
 	log             zerolog.Logger
-	externalStorage Storage
+	ExternalStorage Storage
 }
 
 type CacheConfig struct {
@@ -89,7 +89,7 @@ func NewCache(ctx *context.Context, cfg *CacheConfig, externalStorage Storage) (
 		return nil, nil
 	}
 
-	c := &Cache{ctx: ctx, cfg: cfg, externalStorage: externalStorage}
+	c := &Cache{ctx: ctx, cfg: cfg, ExternalStorage: externalStorage}
 
 	c.log = ctx.GetPackageLogger(empty{})
 	c.log.Info().Msg("created external cache")
@@ -102,7 +102,7 @@ func (c *Cache) Add(key string, data cachedata.CacheData) error {
 	if data.GetStatusCode() >= http.StatusBadRequest {
 		ttl = c.cfg.TTLErr
 	}
-	err := c.externalStorage.Add(c.cfg.KeyPrefix+key, data, ttl)
+	err := c.ExternalStorage.Add(c.cfg.KeyPrefix+key, data, ttl)
 	if err != nil {
 		return err
 	}
@@ -113,7 +113,7 @@ func (c *Cache) Add(key string, data cachedata.CacheData) error {
 }
 
 func (c *Cache) Select(key string, data interface{}) error {
-	err := c.externalStorage.Select(c.cfg.KeyPrefix+key, data)
+	err := c.ExternalStorage.Select(c.cfg.KeyPrefix+key, data)
 	if err != nil {
 		return cacheerrs.ErrNotFoundInCache
 	}
@@ -124,7 +124,7 @@ func (c *Cache) Select(key string, data interface{}) error {
 }
 
 func (c *Cache) Expire(key string) error {
-	err := c.externalStorage.Expire(c.cfg.KeyPrefix+key, c.cfg.TTL)
+	err := c.ExternalStorage.Expire(c.cfg.KeyPrefix+key, c.cfg.TTL)
 	if err != nil {
 		return cacheerrs.ErrNotFoundInCache
 	}
@@ -135,7 +135,7 @@ func (c *Cache) Expire(key string) error {
 }
 
 func (c *Cache) Update(key string, data cachedata.CacheData) error {
-	err := c.externalStorage.Update(c.cfg.KeyPrefix+key, data, c.cfg.TTL)
+	err := c.ExternalStorage.Update(c.cfg.KeyPrefix+key, data, c.cfg.TTL)
 	if err != nil {
 		return err
 	}
@@ -146,7 +146,7 @@ func (c *Cache) Update(key string, data cachedata.CacheData) error {
 }
 
 func (c *Cache) JSONGet(key, path string, value interface{}) error {
-	err := c.externalStorage.JSONGet(c.cfg.KeyPrefix+key, path, value)
+	err := c.ExternalStorage.JSONGet(c.cfg.KeyPrefix+key, path, value)
 	if err != nil {
 		return err
 	}
@@ -157,7 +157,7 @@ func (c *Cache) JSONGet(key, path string, value interface{}) error {
 }
 
 func (c *Cache) JSONSet(key, path, json string) error {
-	err := c.externalStorage.JSONSet(c.cfg.KeyPrefix+key, path, json)
+	err := c.ExternalStorage.JSONSet(c.cfg.KeyPrefix+key, path, json)
 	if err != nil {
 		return err
 	}
@@ -168,7 +168,7 @@ func (c *Cache) JSONSet(key, path, json string) error {
 }
 
 func (c *Cache) JSONSetNX(key, path, json string) error {
-	err := c.externalStorage.JSONSetNX(c.cfg.KeyPrefix+key, path, json)
+	err := c.ExternalStorage.JSONSetNX(c.cfg.KeyPrefix+key, path, json)
 	if err != nil {
 		return err
 	}
@@ -179,7 +179,7 @@ func (c *Cache) JSONSetNX(key, path, json string) error {
 }
 
 func (c *Cache) GetUUID(key string, uuid *string) error {
-	err := c.externalStorage.JSONGet(c.cfg.KeyPrefix+key, "UUID", uuid)
+	err := c.ExternalStorage.JSONGet(c.cfg.KeyPrefix+key, "UUID", uuid)
 	if err != nil {
 		return err
 	}
@@ -190,11 +190,11 @@ func (c *Cache) GetUUID(key string, uuid *string) error {
 }
 
 func (c *Cache) NewMutexByID(lockID string, expire, checkInterval time.Duration) (*externalcache.Mutex, error) {
-	return c.externalStorage.NewMutexByID(lockID, expire, checkInterval)
+	return c.ExternalStorage.NewMutexByID(lockID, expire, checkInterval)
 }
 
 func (c *Cache) JSONDelete(key, path string) error {
-	err := c.externalStorage.JSONDelete(c.cfg.KeyPrefix+key, path)
+	err := c.ExternalStorage.JSONDelete(c.cfg.KeyPrefix+key, path)
 	if err != nil {
 		return err
 	}
