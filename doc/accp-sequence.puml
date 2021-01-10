@@ -1,0 +1,69 @@
+@startuml accp
+title The workflow of Access Control Caching Proxy
+actor "Client" as client
+box ACCP
+participant "Proxy Handler" as proxy
+participant "Introspection" as introspection
+participant "Limiter" as limiter
+participant "Internal Cache" as internal_cache
+end box
+
+box Introspector
+participant "Introspection" as externalIntrospector
+end box
+
+box Redis
+participant "Limits state" as redisLimitsState
+participant "External cache" as redisExternalCache
+end box
+
+box RabbitMQ
+participant "Business\nanalytic\nqueue" as businessAnalyticQueue
+end box
+group Not found in cache
+client -> proxy : send request
+proxy -> proxy : check that API endpoint is not exluded
+proxy -> introspection : forward request to introspection
+introspection -> externalIntrospector : introspect access-tokens
+externalIntrospector --> introspection : return body of access-token
+introspection -> introspection : hydration of the request by body of access-token
+introspection -> limiter : pass request for check rate limits
+limiter -> redisLimitsState : request limits in common storage
+redisLimitsState --> limiter : update internal limit counters
+limiter -> limiter : check limits from internal memory
+limiter -> limiter : increment limits
+limiter -> redisLimitsState : update limits in common storage
+limiter -> internal_cache : search response in internal cache
+internal_cache -> internal_cache : not found
+internal_cache -> redisExternalCache : search response in external cache
+redisExternalCache --> internal_cache : not found
+internal_cache --> proxy : not found
+proxy -> backend : pass request to backend
+backend --> proxy : return response fron backend
+proxy -> internal_cache : save response to internal cache
+internal_cache -> redisExternalCache : save response to external cache 
+proxy --> client : response
+end group
+
+group Found in cache
+client -> proxy : send request
+proxy -> proxy : check that API endpoint is not exluded
+proxy -> introspection : forward request to introspection
+introspection -> externalIntrospector : introspect access-tokens
+externalIntrospector --> introspection : return body of access-token
+introspection -> introspection : hydration of the request by body of access-token
+introspection -> limiter : pass request for check rate limits
+limiter -> redisLimitsState : request limits in common storage
+redisLimitsState --> limiter : update internal limit counters
+limiter -> limiter : check limits from internal memory
+limiter -> limiter : increment limits
+limiter -> redisLimitsState : update limits in common storage
+limiter -> internal_cache : search response in internal cache
+internal_cache -> redisExternalCache : check UUID of cache item
+redisExternalCache --> internal_cache : UUID identical
+internal_cache --> proxy : response
+proxy -> client
+proxy -> businessAnalyticQueue : pass request to queue
+businessAnalyticQueue -> backend : pass request to backend for analytic
+end group
+@enduml

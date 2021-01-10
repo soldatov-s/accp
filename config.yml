@@ -1,0 +1,108 @@
+logger:
+  nocoloredoutput: true
+  withtrace: false
+  level: info
+
+introspector:
+  dsn: http://192.168.100.48:30611
+  endpoint: /oauth2/introspect
+  contenttype: application/x-www-form-urlencoded
+  method: POST
+  validmarker: '"active":true'
+  bodytemplate: "token_type_hint=access_token&token={{.Token}}"
+  trimedfilds: ["exp", "iat"]
+  cookiename: ["access-token"]
+  queryparamname: ["access_token"]
+  poolsize: 50
+  pooltimeout: 10s
+
+redis: # Redis
+  dsn: redis://redis:6379
+  minidleconnections: 10
+  maxopenedconnections: 30
+  maxconnectionlifetime: 30s
+
+rabbitmq:
+  dsn: amqp://guest:guest@rabbitmq:5672
+  backoffpolicy: [2s, 5s, 10s, 15s, 20s, 25s]
+  exchangename: testout.events.dev
+
+admin:
+  listen: 0.0.0.0:9100
+  pprof: true
+
+proxy:
+  listen: 0.0.0.0:9000
+  hydration:
+    requestid: true
+  routes:
+    /api/v1/:
+      parameters:
+        introspect: true
+        introspecthydration: plaintext # add result of introspection as plaintext in header
+        dsn: http://192.168.100.48:30637
+        methods: [GET, PUT, POST]
+        pool:
+          size: 20
+          timeout: 10s
+        routkey: V1 # rabbitmq rouykey
+      routes:
+        # subroutes
+        users:
+          parameters:
+            limits:
+              token:
+                counter: 1000
+                pt: 1m
+              ip:
+                counter: 1000
+                pt: 1m
+              deviceid:
+                header: [device-id]
+                cookie: [device-id]
+                counter: 1000
+                pt: 1m # the period time for cache auto update
+            refresh:
+              count: 100
+              time: 2m
+            cache:
+              memory:
+                ttl: 30s
+                ttlerr: 3s
+              external:
+                keyprefix: users_
+                ttl: 60s
+                ttlerr: 3s
+    /api/v1/users:
+      parameters:
+        introspect: true
+        introspecthydration: plaintext # add result of introspection as plaintext in header
+        dsn: http://192.168.100.48:30637
+        pool:
+          size: 20
+          timeout: 10s
+        routkey: USERS
+        limits:
+          token:
+            counter: 1000
+            pt: 1m
+          ip:
+            counter: 1000
+            pt: 1m
+          deviceid:
+            header: device-id
+            cookie: device-id
+            counter: 1000
+            pt: 1m
+        refresh:
+          count: 100
+          time: 2m
+        cache:
+          memory:
+            ttl: 30s
+            ttlerr: 3s
+          external:
+            ttl: 60s
+            ttlerr: 3s
+  excluded:
+    /api/v2/:
