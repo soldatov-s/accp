@@ -1,13 +1,15 @@
 package external
 
 import (
+	"context"
 	"net/http"
 	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/soldatov-s/accp/internal/cache/cachedata"
 	"github.com/soldatov-s/accp/internal/cache/cacheerrs"
-	context "github.com/soldatov-s/accp/internal/ctx"
+	"github.com/soldatov-s/accp/internal/logger"
+	"github.com/soldatov-s/accp/internal/redis"
 	externalcache "github.com/soldatov-s/accp/internal/redis"
 )
 
@@ -31,67 +33,25 @@ type Storage interface {
 }
 
 type Cache struct {
-	ctx             *context.Context
-	cfg             *CacheConfig
+	ctx             context.Context
+	cfg             *Config
 	log             zerolog.Logger
 	ExternalStorage Storage
 }
 
-type CacheConfig struct {
-	KeyPrefix string
-	TTL       time.Duration
-	TTLErr    time.Duration
-}
-
-func (cc *CacheConfig) Initilize() error {
-	if cc.KeyPrefix == "" {
-		cc.KeyPrefix = defaultKeyPrefix
-	}
-
-	if cc.TTL == 0 {
-		cc.TTL = defaultTTL
-	}
-
-	return nil
-}
-
-func (cc *CacheConfig) Merge(target *CacheConfig) *CacheConfig {
-	if cc == nil {
-		return target
-	}
-
-	result := &CacheConfig{
-		KeyPrefix: cc.KeyPrefix,
-		TTL:       cc.TTL,
-	}
-
-	if target == nil {
-		return result
-	}
-
-	if target.KeyPrefix != "" {
-		result.KeyPrefix = target.KeyPrefix
-	}
-
-	if target.TTL > 0 {
-		result.TTL = target.TTL
-	}
-
-	if target.TTLErr > 0 {
-		result.TTLErr = target.TTLErr
-	}
-
-	return result
-}
-
-func NewCache(ctx *context.Context, cfg *CacheConfig, externalStorage Storage) (*Cache, error) {
+func NewCache(ctx context.Context, cfg *Config) (*Cache, error) {
+	externalStorage := redis.Get(ctx)
 	if externalStorage == nil {
 		return nil, nil
 	}
 
-	c := &Cache{ctx: ctx, cfg: cfg, ExternalStorage: externalStorage}
+	c := &Cache{
+		ctx:             ctx,
+		cfg:             cfg,
+		ExternalStorage: externalStorage,
+		log:             logger.GetPackageLogger(ctx, empty{}),
+	}
 
-	c.log = ctx.GetPackageLogger(empty{})
 	c.log.Info().Msg("created external cache")
 
 	return c, nil

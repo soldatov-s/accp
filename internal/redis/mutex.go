@@ -1,4 +1,4 @@
-package externalcache
+package redis
 
 import (
 	// stdlib

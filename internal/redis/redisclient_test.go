@@ -1,11 +1,10 @@
-package externalcache_test
+package redis
 
 import (
+	"context"
 	"testing"
 	"time"
 
-	context "github.com/soldatov-s/accp/internal/ctx"
-	externalcache "github.com/soldatov-s/accp/internal/redis"
 	"github.com/soldatov-s/accp/x/dockertest"
 	testhelpers "github.com/soldatov-s/accp/x/test_helpers"
 	resilience "github.com/soldatov-s/accp/x/test_helpers/resilence"
@@ -16,11 +15,7 @@ func TestNewRedisClient(t *testing.T) {
 	err := testhelpers.LoadTestYAML()
 	require.Nil(t, err)
 
-	lc, err := testhelpers.LoadTestConfigLogger()
-	require.Nil(t, err)
-
-	ctx := context.NewContext()
-	ctx.InitilizeLogger(lc)
+	ctx := context.Background()
 
 	dsn, err := dockertest.RunRedis()
 	require.Nil(t, err)
@@ -28,20 +23,20 @@ func TestNewRedisClient(t *testing.T) {
 
 	t.Logf("Connecting to redis: %s", dsn)
 
-	ec := &externalcache.RedisConfig{
+	ec := &Config{
 		DSN:                   dsn,
 		MinIdleConnections:    10,
 		MaxOpenedConnections:  30,
 		MaxConnectionLifetime: 30 * time.Second,
 	}
 
-	var externalStorage *externalcache.RedisClient
+	var externalStorage *RedisClient
 	err = resilience.Retry(
 		t,
 		time.Second*5,
 		time.Minute*5,
 		func() (err error) {
-			externalStorage, err = externalcache.NewRedisClient(ctx, ec)
+			externalStorage, err = NewRedisClient(ctx, ec)
 			return err
 		},
 	)

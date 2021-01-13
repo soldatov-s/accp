@@ -1,14 +1,14 @@
 package routes
 
 import (
+	"context"
 	"testing"
 
-	testctxhelper "github.com/soldatov-s/accp/x/test_helpers/ctx"
 	"github.com/stretchr/testify/require"
 )
 
 func TestAddRouteByPath(t *testing.T) {
-	ctx := testctxhelper.InitTestCtx(t)
+	ctx := context.Background()
 
 	rm := make(MapRoutes)
 

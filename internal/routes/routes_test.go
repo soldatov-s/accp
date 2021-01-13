@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"context"
 	"net/http"
 	"testing"
 	"time"
@@ -8,10 +9,8 @@ import (
 	"github.com/soldatov-s/accp/internal/cache"
 	"github.com/soldatov-s/accp/internal/cache/memory"
 	"github.com/soldatov-s/accp/internal/httpclient"
-	"github.com/soldatov-s/accp/internal/introspection"
 	"github.com/soldatov-s/accp/internal/limits"
 	"github.com/soldatov-s/accp/internal/routes/refresh"
-	testctxhelper "github.com/soldatov-s/accp/x/test_helpers/ctx"
 	testProxyHelpers "github.com/soldatov-s/accp/x/test_helpers/proxy"
 	"github.com/stretchr/testify/require"
 )
@@ -26,7 +25,7 @@ func initRouteParameters(t *testing.T) *Parameters {
 				TTLErr: 1 * time.Second,
 			},
 		},
-		Pool: &httpclient.PoolConfig{
+		Pool: &httpclient.Config{
 			Size:    20,
 			Timeout: 10 * time.Second,
 		},
@@ -49,29 +48,29 @@ func initRouteParameters(t *testing.T) *Parameters {
 func initRoute(t *testing.T) *Route {
 	var err error
 
-	ctx := testctxhelper.InitTestCtx(t)
+	ctx := context.Background()
 	params := initRouteParameters(t)
 	r := NewRoute(ctx, "/api/v1/users", params)
 
-	ic := &introspection.Config{
-		DSN:            "http://localhost:8001",
-		Endpoint:       "/oauth2/introspect",
-		ContentType:    "application/x-www-form-urlencoded",
-		Method:         "POST",
-		ValidMarker:    `"active":true`,
-		BodyTemplate:   `token_type_hint=access_token&token={{.Token}}`,
-		CookieName:     []string{"access-token"},
-		QueryParamName: []string{"access_token"},
-		Pool: &httpclient.PoolConfig{
-			Size:    50,
-			Timeout: 10 * time.Second,
-		},
-	}
+	// ic := &introspection.Config{
+	// 	DSN:            "http://localhost:8001",
+	// 	Endpoint:       "/oauth2/introspect",
+	// 	ContentType:    "application/x-www-form-urlencoded",
+	// 	Method:         "POST",
+	// 	ValidMarker:    `"active":true`,
+	// 	BodyTemplate:   `token_type_hint=access_token&token={{.Token}}`,
+	// 	CookieName:     []string{"access-token"},
+	// 	QueryParamName: []string{"access_token"},
+	// 	Pool: &httpclient.PoolConfig{
+	// 		Size:    50,
+	// 		Timeout: 10 * time.Second,
+	// 	},
+	// }
 
-	i, err := introspection.NewIntrospector(ctx, ic)
-	require.Nil(t, err)
+	// i, err := introspection.NewIntrospector(ctx, ic)
+	// require.Nil(t, err)
 
-	err = r.Initilize(nil, nil, i)
+	err = r.Initilize()
 	require.Nil(t, err)
 
 	return r

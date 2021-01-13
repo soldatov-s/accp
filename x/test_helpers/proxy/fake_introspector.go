@@ -1,6 +1,7 @@
 package testproxyhelpers
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -8,7 +9,6 @@ import (
 
 	"github.com/soldatov-s/accp/internal/httpclient"
 	"github.com/soldatov-s/accp/internal/introspection"
-	testctxhelper "github.com/soldatov-s/accp/x/test_helpers/ctx"
 	"github.com/stretchr/testify/require"
 )
 
@@ -18,7 +18,7 @@ const (
 )
 
 func InitTestIntrospector(t *testing.T) *introspection.Introspect {
-	ctx := testctxhelper.InitTestCtx(t)
+	ctx := context.Background()
 
 	ic := &introspection.Config{
 		DSN:            "http://localhost:8001",
@@ -29,7 +29,7 @@ func InitTestIntrospector(t *testing.T) *introspection.Introspect {
 		BodyTemplate:   `token_type_hint=access_token&token={{.Token}}`,
 		CookieName:     []string{"access-token"},
 		QueryParamName: []string{"access_token"},
-		Pool: &httpclient.PoolConfig{
+		Pool: &httpclient.Config{
 			Size:    50,
 			Timeout: 10 * time.Second,
 		},

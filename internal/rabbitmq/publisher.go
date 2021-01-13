@@ -1,28 +1,43 @@
 package rabbitmq
 
 import (
+	"context"
 	"encoding/json"
+	"strings"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog"
-	context "github.com/soldatov-s/accp/internal/ctx"
+	"github.com/soldatov-s/accp/internal/logger"
+	"github.com/soldatov-s/accp/internal/metrics"
+	"github.com/soldatov-s/accp/internal/utils"
 	"github.com/streadway/amqp"
 )
 
 type empty struct{}
 
 type Publish struct {
-	ctx               *context.Context
+	ctx               context.Context
 	log               zerolog.Logger
-	cfg               *PublisherConfig
+	cfg               *Config
 	Conn              *amqp.Connection
 	Channel           *amqp.Channel
 	weAreShuttingDown bool
+
+	// Metrics
+	metrics.Service
 }
 
-func NewPublisher(ctx *context.Context, cfg *PublisherConfig) (*Publish, error) {
-	p := &Publish{ctx: ctx, cfg: cfg}
-	p.log = ctx.GetPackageLogger(empty{})
+func NewPublisher(ctx context.Context, cfg *Config) (*Publish, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+
+	p := &Publish{
+		ctx: ctx,
+		cfg: cfg,
+		log: logger.GetPackageLogger(ctx, empty{}),
+	}
 
 	if err := p.connectPublisher(); err != nil {
 		return nil, err
@@ -138,4 +153,37 @@ func (p *Publish) Ping() (err error) {
 
 	_ = client.Close()
 	return
+}
+
+// GetMetrics return map of the metrics from cache connection
+func (p *Publish) GetMetrics() metrics.MapMetricsOptions {
+	_ = p.Service.GetMetrics()
+	p.Metrics[ProviderName+"_status"] = &metrics.MetricOptions{
+		Metric: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Name: ProviderName + "_status",
+				Help: ProviderName + " status link to " + utils.RedactedDSN(p.cfg.DSN),
+			}),
+		MetricFunc: func(m interface{}) {
+			(m.(prometheus.Gauge)).Set(0)
+			err := p.Ping()
+			if err == nil {
+				(m.(prometheus.Gauge)).Set(1)
+			}
+		},
+	}
+	return p.Metrics
+}
+
+// GetReadyHandlers return array of the readyHandlers from database connection
+func (p *Publish) GetReadyHandlers() metrics.MapCheckFunc {
+	_ = p.Service.GetReadyHandlers()
+	p.ReadyHandlers[strings.ToUpper(ProviderName+"_notfailed")] = func() (bool, string) {
+		if err := p.Ping(); err != nil {
+			return false, err.Error()
+		}
+
+		return true, ""
+	}
+	return p.ReadyHandlers
 }

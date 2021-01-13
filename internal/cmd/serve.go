@@ -1,97 +1,72 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 
-	"github.com/soldatov-s/accp/internal/admin"
-	"github.com/soldatov-s/accp/internal/cache/external"
+	"github.com/soldatov-s/accp/internal/app"
 	"github.com/soldatov-s/accp/internal/cfg"
-	context "github.com/soldatov-s/accp/internal/ctx"
 	"github.com/soldatov-s/accp/internal/httpproxy"
 	"github.com/soldatov-s/accp/internal/introspection"
-	"github.com/soldatov-s/accp/internal/publisher"
+	"github.com/soldatov-s/accp/internal/logger"
+	"github.com/soldatov-s/accp/internal/meta"
 	"github.com/soldatov-s/accp/internal/rabbitmq"
-	externalcache "github.com/soldatov-s/accp/internal/redis"
+	"github.com/soldatov-s/accp/internal/redis"
 	"github.com/spf13/cobra"
 )
 
 type empty struct{}
 
 func serveHandler(command *cobra.Command, _ []string) {
-	var err error
+	// Create context
+	ctx := context.Background()
 
-	// Create app context
-	ctx := context.NewContext()
+	// Set app info
+	ctx = meta.SetAppInfo(ctx, appName, builded, hash, version, description)
 
-	// Fill appinfo
-	ctx.FillAppInfo(appName, builded, hash, version, description)
-
-	// Initilize config
-	config, err := cfg.NewConfig(command)
+	// Load and parse config
+	ctx, err := cfg.RegistrateAndParse(ctx, command)
 	if err != nil {
-		fmt.Println("failed to load config")
-		os.Exit(0)
+		fmt.Println(err)
+		os.Exit(1)
 	}
+	fmt.Println("configuration parsed successfully")
+	c := cfg.Get(ctx)
 
-	// Initilize logger
-	ctx.InitilizeLogger(config.Logger)
-	log := ctx.GetPackageLogger(empty{})
+	// Registrate logger
+	ctx = logger.RegistrateAndInitilize(ctx, c.Logger)
 
-	log.Info().Msgf("Starting %s (%s)...", ctx.AppInfo.Name, ctx.AppInfo.GetBuildInfo())
-	log.Info().Msg(ctx.AppInfo.Description)
+	// Get logger for package
+	log := logger.GetPackageLogger(ctx, empty{})
 
-	// Initilize introspector
-	introspector, err := introspection.NewIntrospector(ctx, config.Introspector)
+	a := meta.Get(ctx)
+	log.Info().Msgf("starting %s (%s)...", a.Name, a.GetBuildInfo())
+	log.Info().Msg(a.Description)
+
+	ctx, err = introspection.Registrate(ctx, c.Introspector)
 	if err != nil {
-		log.Fatal().Err(err).Msg("failed to create introspector")
+		log.Fatal().Err(err).Msg("failed to registrate introspection")
 	}
 
-	// Initilize external storage
-	var externalStorage external.Storage
-	if config.Redis != nil {
-		externalStorage, err = externalcache.NewRedisClient(ctx, config.Redis)
-		if err != nil {
-			log.Fatal().Err(err).Msg("failed to create external storage")
-		}
-	}
-
-	// Initilize pub
-	var pub publisher.Publisher
-	if config.Rabbitmq != nil {
-		pub, err = rabbitmq.NewPublisher(ctx, config.Rabbitmq)
-		if err != nil {
-			log.Fatal().Err(err).Msg("failed to create publisher")
-		}
-	}
-
-	// Initilize proxy
-	proxy, err := httpproxy.NewHTTPProxy(ctx, config.Proxy, introspector, externalStorage, pub)
+	ctx, err = redis.Registrate(ctx, c.Redis)
 	if err != nil {
-		log.Fatal().Err(err).Msg("failed to create proxy")
+		log.Fatal().Err(err).Msg("failed to registrate redis")
 	}
 
-	// Initilize admin
-	adminsrv, err := admin.NewAdmin(ctx, config.Admin)
+	ctx, err = rabbitmq.Registrate(ctx, c.Rabbitmq)
 	if err != nil {
-		log.Fatal().Err(err).Msg("failed to create admin")
+		log.Fatal().Err(err).Msg("failed to registrate rabbitmq")
 	}
 
-	// Start proxy
-	go proxy.Start()
-
-	// Start admin
-	go adminsrv.Start()
-
-	shutdown := func() {
-		if err := proxy.Shutdown(); err != nil {
-			log.Fatal().Err(err).Msg("failed to shutdow proxy")
-		}
-
-		if err := adminsrv.Shutdown(); err != nil {
-			log.Fatal().Err(err).Msg("failed to shutdow admin")
-		}
+	ctx, err = httpproxy.Registrate(ctx, c.Proxy)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to registrate proxy")
 	}
 
-	ctx.AppLoop(shutdown)
+	if err := app.Start(ctx); err != nil {
+		log.Fatal().Err(err).Msg("failed to start providers")
+	}
+
+	app.Loop(ctx)
 }

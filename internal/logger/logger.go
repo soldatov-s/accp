@@ -29,44 +29,43 @@ type Logger struct {
 	// Main logger
 	logger zerolog.Logger
 	// Other created loggers.
-	loggers      map[string]zerolog.Logger
-	loggersMutex sync.RWMutex
-	initialized  bool
+	loggers     sync.Map
+	initialized bool
 }
 
 // nolint
 func loggerCtxByField(loggerCtx *zerolog.Context, field *Field) zerolog.Context {
 	ctx := *loggerCtx
-	switch field.Type {
-	case reflect.Bool:
+	switch field.Value.(type) {
+	case bool:
 		ctx = ctx.Bool(field.Name, field.Value.(bool))
-	case reflect.Float32:
+	case float32:
 		ctx = ctx.Float32(field.Name, field.Value.(float32))
-	case reflect.Float64:
+	case float64:
 		ctx = loggerCtx.Float64(field.Name, field.Value.(float64))
-	case reflect.Int:
+	case int:
 		ctx = ctx.Int(field.Name, field.Value.(int))
-	case reflect.Int8:
+	case int8:
 		ctx = ctx.Int8(field.Name, field.Value.(int8))
-	case reflect.Int16:
+	case int16:
 		ctx = loggerCtx.Int16(field.Name, field.Value.(int16))
-	case reflect.Int32:
+	case int32:
 		ctx = loggerCtx.Int32(field.Name, field.Value.(int32))
-	case reflect.Int64:
+	case int64:
 		ctx = ctx.Int64(field.Name, field.Value.(int64))
-	case reflect.Interface:
+	case interface{}:
 		ctx = ctx.Interface(field.Name, field.Value)
-	case reflect.String:
+	case string:
 		ctx = ctx.Str(field.Name, field.Value.(string))
-	case reflect.Uint:
+	case uint:
 		ctx = ctx.Uint(field.Name, field.Value.(uint))
-	case reflect.Uint8:
+	case uint8:
 		ctx = ctx.Uint8(field.Name, field.Value.(uint8))
-	case reflect.Uint16:
+	case uint16:
 		ctx = ctx.Uint16(field.Name, field.Value.(uint16))
-	case reflect.Uint32:
+	case uint32:
 		ctx = ctx.Uint32(field.Name, field.Value.(uint32))
-	case reflect.Uint64:
+	case uint64:
 		ctx = ctx.Uint64(field.Name, field.Value.(uint64))
 	}
 	return ctx
@@ -74,13 +73,10 @@ func loggerCtxByField(loggerCtx *zerolog.Context, field *Field) zerolog.Context 
 
 // GetLogger creates new logger if not exists and fills it with defined fields.
 // If requested logger already exists - it'll be returned.
-func (l *Logger) GetLogger(name string, fields []*Field) zerolog.Logger {
-	l.loggersMutex.RLock()
-	logger, found := l.loggers[name]
-	l.loggersMutex.RUnlock()
-
+func (l *Logger) GetLogger(name string, fields []*Field) *zerolog.Logger {
+	logger, found := l.loggers.Load(name)
 	if found {
-		return logger
+		return logger.(*zerolog.Logger)
 	}
 
 	loggerCtx := l.logger.With()
@@ -89,28 +85,21 @@ func (l *Logger) GetLogger(name string, fields []*Field) zerolog.Logger {
 		loggerCtx = loggerCtxByField(&loggerCtx, field)
 	}
 
-	l.loggersMutex.Lock()
-	l.loggers[name] = loggerCtx.Logger()
-	l.loggersMutex.Unlock()
-
-	return loggerCtx.Logger()
+	log := loggerCtx.Logger()
+	l.loggers.Store(name, &log)
+	return &log
 }
 
-func NewLogger(cfg *Config) *Logger {
+func NewLogger() *Logger {
 	l := &Logger{}
-
-	// Initialize logger
-	l.Initialize(
-		cfg.Level,
-		cfg.NoColoredOutput,
-		cfg.WithTrace,
-	)
+	l.Initialize(DefaultConfig())
 
 	return l
 }
 
-func (l *Logger) Initialize(lvl string, noColor, withTrace bool) {
-	switch strings.ToUpper(lvl) {
+func (l *Logger) Initialize(cfg *Config) {
+	cfg.Validate()
+	switch strings.ToUpper(cfg.Level) {
 	case LoggerLevelDebug:
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	case LoggerLevelInfo:
@@ -129,7 +118,7 @@ func (l *Logger) Initialize(lvl string, noColor, withTrace bool) {
 
 	output := zerolog.ConsoleWriter{
 		Out:        os.Stdout,
-		NoColor:    noColor,
+		NoColor:    cfg.NoColoredOutput,
 		TimeFormat: time.RFC3339,
 	}
 
@@ -151,9 +140,8 @@ func (l *Logger) Initialize(lvl string, noColor, withTrace bool) {
 	}
 
 	l.logger = zerolog.New(output).With().Timestamp().Logger()
-	l.logger = l.logger.Hook(TracingHook{WithTrace: withTrace})
+	l.logger = l.logger.Hook(TracingHook{WithTrace: cfg.WithTrace})
 
-	l.loggers = make(map[string]zerolog.Logger)
 	l.initialized = true
 }
 
@@ -162,8 +150,8 @@ func (l *Logger) IsInitialized() bool {
 	return l.initialized
 }
 
-// InitializeLogger initilizes fields for domains and packages
-func InitializeLogger(parent *zerolog.Logger, emptyStruct interface{}) (log zerolog.Logger) {
+// Initialize initilizes fields for domains and packages
+func Initialize(parent *zerolog.Logger, emptyStruct interface{}) (log zerolog.Logger) {
 	res := false
 	packageTypes := []string{"domains", "internal"}
 	packageType := ""

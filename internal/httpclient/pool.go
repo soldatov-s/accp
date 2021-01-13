@@ -10,7 +10,7 @@ type Pool struct {
 	netTransport *http.Transport
 }
 
-func NewPool(poolCfg *PoolConfig) *Pool {
+func NewPool(poolCfg *Config) *Pool {
 	p := &Pool{}
 	p.ch = make(chan *Client, poolCfg.Size)
 

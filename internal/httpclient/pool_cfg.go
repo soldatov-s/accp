@@ -7,14 +7,14 @@ const (
 	defaultTimeout = 5 * time.Second
 )
 
-type PoolConfig struct {
+type Config struct {
 	// Size - size of pool httpclients for introspection requests
 	Size int
 	// Timeout - timeout of httpclients for introspection requests
 	Timeout time.Duration
 }
 
-func (pc *PoolConfig) Initilize() error {
+func (pc *Config) Validate() error {
 	if pc.Size == 0 {
 		pc.Size = defaultSize
 	}
@@ -26,8 +26,8 @@ func (pc *PoolConfig) Initilize() error {
 	return nil
 }
 
-func (pc *PoolConfig) Merge(target *PoolConfig) *PoolConfig {
-	result := &PoolConfig{
+func (pc *Config) Merge(target *Config) *Config {
+	result := &Config{
 		Size:    pc.Size,
 		Timeout: pc.Timeout,
 	}

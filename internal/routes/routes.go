@@ -2,6 +2,7 @@ package routes
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"io/ioutil"
 	"net/http"
@@ -13,14 +14,14 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/soldatov-s/accp/internal/cache"
 	"github.com/soldatov-s/accp/internal/cache/cachedata"
-	"github.com/soldatov-s/accp/internal/cache/external"
-	context "github.com/soldatov-s/accp/internal/ctx"
 	"github.com/soldatov-s/accp/internal/httpclient"
 	"github.com/soldatov-s/accp/internal/httputils"
 	"github.com/soldatov-s/accp/internal/introspection"
 	"github.com/soldatov-s/accp/internal/limits"
+	"github.com/soldatov-s/accp/internal/logger"
 	"github.com/soldatov-s/accp/internal/publisher"
-	accpmodels "github.com/soldatov-s/accp/models"
+	"github.com/soldatov-s/accp/internal/rabbitmq"
+	"github.com/soldatov-s/accp/models"
 )
 
 const (
@@ -31,10 +32,10 @@ const (
 type empty struct{}
 
 type Route struct {
-	ctx            *context.Context
+	ctx            context.Context
 	log            zerolog.Logger
 	Parameters     *Parameters
-	Routes         map[string]*Route
+	Routes         MapRoutes
 	Cache          *cache.Cache
 	Pool           *httpclient.Pool
 	WaitAnswerList map[string]chan struct{}
@@ -48,35 +49,30 @@ type Route struct {
 	Introspect     bool
 }
 
-func NewRoute(ctx *context.Context, routeName string, params *Parameters) *Route {
+func NewRoute(ctx context.Context, routeName string, params *Parameters) *Route {
 	return &Route{
-		ctx:        ctx,
-		log:        ctx.GetPackageLogger(empty{}),
-		Parameters: params,
-		Route:      routeName,
-		Routes:     make(MapRoutes),
+		ctx:            ctx,
+		log:            logger.GetPackageLogger(ctx, empty{}),
+		Parameters:     params,
+		Route:          routeName,
+		Routes:         make(MapRoutes),
+		Publisher:      rabbitmq.Get(ctx),
+		Introspector:   introspection.Get(ctx),
+		WaitAnswerList: make(map[string]chan struct{}),
+		WaiteAnswerMu:  make(map[string]*sync.Mutex),
+		Limits:         limits.NewLimits(params.Limits),
+		Introspect:     params.Introspect,
 	}
 }
 
-func (r *Route) Initilize(
-	externalStorage external.Storage,
-	pub publisher.Publisher,
-	introspector introspection.Introspector,
-) error {
+func (r *Route) Initilize() error {
 	var err error
 
 	r.Pool = httpclient.NewPool(r.Parameters.Pool)
 
-	if r.Cache, err = cache.NewCache(r.ctx, r.Parameters.Cache, externalStorage); err != nil {
+	if r.Cache, err = cache.NewCache(r.ctx, r.Parameters.Cache); err != nil {
 		return err
 	}
-
-	r.Publisher = pub
-	r.Introspector = introspector
-	r.WaitAnswerList = make(map[string]chan struct{})
-	r.WaiteAnswerMu = make(map[string]*sync.Mutex)
-	r.Limits = limits.NewLimits(r.Parameters.Limits)
-	r.Introspect = r.Parameters.Introspect
 
 	if r.Parameters.Refresh.Time > 0 {
 		r.RefreshTimer = time.AfterFunc(r.Parameters.Refresh.Time, r.RefreshHandler)
@@ -166,7 +162,7 @@ func (r *Route) CheckLimits(req *http.Request) (*bool, error) {
 
 func (r *Route) RefreshHandler() {
 	r.Cache.Mem.Range(func(k, v interface{}) bool {
-		data := v.(*cachedata.CacheItem).Data.(*accpmodels.RRData)
+		data := v.(*cachedata.CacheItem).Data.(*models.RRData)
 
 		go func() {
 			client := r.Pool.GetFromPool()
@@ -197,7 +193,7 @@ func (r *Route) Publish(message interface{}) error {
 	return r.Publisher.SendMessage(message, r.Parameters.RouteKey)
 }
 
-func (r *Route) RequestToBack(w http.ResponseWriter, req *http.Request) *accpmodels.RRData {
+func (r *Route) RequestToBack(w http.ResponseWriter, req *http.Request) *models.RRData {
 	var err error
 	// Proxy request to backend
 	client := r.Pool.GetFromPool()
@@ -216,7 +212,7 @@ func (r *Route) RequestToBack(w http.ResponseWriter, req *http.Request) *accpmod
 	}
 	defer resp.Body.Close()
 
-	rrData := accpmodels.NewRRData()
+	rrData := models.NewRRData()
 	if err := rrData.Request.Read(req); err != nil {
 		r.log.Err(err).Msg("failed to read data from request")
 	}
@@ -301,7 +297,7 @@ func (r *Route) HydrationIntrospect(req *http.Request) error {
 }
 
 // refresh incremets refresh count and checks that we not reached the limit
-func (r *Route) refresh(rrdata *accpmodels.RRData, hk string) {
+func (r *Route) refresh(rrdata *models.RRData, hk string) {
 	// Check that we have refresh limit by request count
 	if rrdata.Refresh.MaxCount == 0 {
 		return
@@ -357,10 +353,10 @@ func (r *Route) refresh(rrdata *accpmodels.RRData, hk string) {
 	r.log.Debug().Msgf("cache refreshed")
 }
 
-func (r *Route) responseHandle(rrdata *accpmodels.RRData, w http.ResponseWriter, req *http.Request, hk string) {
+func (r *Route) responseHandle(rrdata *models.RRData, w http.ResponseWriter, req *http.Request, hk string) {
 	// If get rrdata from redis, request will be empty
 	if rrdata.Request == nil {
-		rrdata.Request = &accpmodels.Request{}
+		rrdata.Request = &models.Request{}
 		if err := rrdata.Request.Read(req); err != nil {
 			r.log.Err(err).Msg("failed to read data from request")
 		}
