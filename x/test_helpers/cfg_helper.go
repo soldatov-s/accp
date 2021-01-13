@@ -152,14 +152,14 @@ func LoadTestConfigProxy() (*httpproxy.Config, error) {
 	return pc, nil
 }
 
-func LoadTestConfig() (*cfg.Configuration, error) {
-	c := &cfg.Configuration{}
+func LoadTestConfig() (*cfg.Config, error) {
+	c := &cfg.Config{}
 
 	if err := LoadTestYAML(); err != nil {
 		return nil, err
 	}
 
-	if err := c.Parse(); err != nil {
+	if err := viper.Unmarshal(c); err != nil {
 		return nil, err
 	}
 

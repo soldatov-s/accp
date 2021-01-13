@@ -13,3 +13,17 @@ type Config struct {
 	// Case-insensitive value.
 	Level string
 }
+
+func DefaultConfig() *Config {
+	return &Config{
+		Level:           LoggerLevelDisabled,
+		NoColoredOutput: true,
+		WithTrace:       false,
+	}
+}
+
+func (c *Config) Validate() {
+	if c.Level == "" {
+		c.Level = "INFO"
+	}
+}

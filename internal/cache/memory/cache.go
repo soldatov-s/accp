@@ -1,6 +1,7 @@
 package memory
 
 import (
+	"context"
 	"net/http"
 	"sync"
 	"time"
@@ -8,7 +9,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/soldatov-s/accp/internal/cache/cachedata"
 	"github.com/soldatov-s/accp/internal/cache/cacheerrs"
-	context "github.com/soldatov-s/accp/internal/ctx"
+	"github.com/soldatov-s/accp/internal/logger"
 )
 
 type empty struct{}
@@ -51,7 +52,7 @@ func (cc *CacheConfig) Merge(target *CacheConfig) *CacheConfig {
 }
 
 type Cache struct {
-	ctx           *context.Context
+	ctx           context.Context
 	cfg           *CacheConfig
 	log           zerolog.Logger
 	clearTimer    *time.Timer
@@ -59,10 +60,13 @@ type Cache struct {
 	sync.Map
 }
 
-func NewCache(ctx *context.Context, cfg *CacheConfig) (*Cache, error) {
-	c := &Cache{ctx: ctx, cfg: cfg}
+func NewCache(ctx context.Context, cfg *CacheConfig) (*Cache, error) {
+	c := &Cache{
+		ctx: ctx,
+		cfg: cfg,
+		log: logger.GetPackageLogger(ctx, empty{}),
+	}
 
-	c.log = ctx.GetPackageLogger(empty{})
 	c.log.Info().Msg("created inmemory cache")
 
 	if c.cfg.TTL > 0 {

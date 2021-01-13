@@ -1,16 +1,19 @@
 package httpproxy
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"github.com/soldatov-s/accp/internal/cache/external"
-	context "github.com/soldatov-s/accp/internal/ctx"
 	"github.com/soldatov-s/accp/internal/httpsrv"
 	"github.com/soldatov-s/accp/internal/introspection"
+	"github.com/soldatov-s/accp/internal/logger"
 	"github.com/soldatov-s/accp/internal/publisher"
+	"github.com/soldatov-s/accp/internal/rabbitmq"
+	"github.com/soldatov-s/accp/internal/redis"
 	"github.com/soldatov-s/accp/internal/routes"
 )
 
@@ -18,7 +21,7 @@ type empty struct{}
 
 type HTTPProxy struct {
 	cfg          *Config
-	ctx          *context.Context
+	ctx          context.Context
 	log          zerolog.Logger
 	srv          *httpsrv.Server
 	routes       routes.MapRoutes
@@ -27,14 +30,19 @@ type HTTPProxy struct {
 	pub          publisher.Publisher
 }
 
-func NewHTTPProxy(ctx *context.Context, cfg *Config, i introspection.Introspector, storage external.Storage, pub publisher.Publisher) (*HTTPProxy, error) {
+func NewHTTPProxy(ctx context.Context, cfg *Config) (*HTTPProxy, error) {
+	err := cfg.Validate()
+	if err != nil {
+		return nil, err
+	}
+
 	p := &HTTPProxy{
 		ctx:          ctx,
-		log:          ctx.GetPackageLogger(empty{}),
 		cfg:          cfg,
-		introspector: i,
-		storage:      storage,
-		pub:          pub,
+		log:          logger.GetPackageLogger(ctx, empty{}),
+		introspector: introspection.Get(ctx),
+		storage:      redis.Get(ctx),
+		pub:          rabbitmq.Get(ctx),
 		routes:       make(routes.MapRoutes),
 	}
 
@@ -75,7 +83,7 @@ func (p *HTTPProxy) fillRoutes(rc routes.MapConfig, r routes.MapRoutes, parentPa
 			return err
 		}
 
-		if err := route.Initilize(p.storage, p.pub, p.introspector); err != nil {
+		if err := route.Initilize(); err != nil {
 			return err
 		}
 
@@ -91,11 +99,7 @@ func (p *HTTPProxy) fillRoutes(rc routes.MapConfig, r routes.MapRoutes, parentPa
 	return nil
 }
 
-func (p *HTTPProxy) fillExcludedRoutes(
-	rc *routes.Config,
-	parentRoute string,
-	parentParameters *routes.Parameters,
-) error {
+func (p *HTTPProxy) fillExcludedRoutes(rc *routes.Config, parentRoute string, parentParameters *routes.Parameters) error {
 	for _, route := range rc.Excluded {
 		k := strings.Trim(parentRoute+"/"+route, "/")
 		p.log.Debug().Msgf("parse excluded route \"%s\"", k)
@@ -106,7 +110,9 @@ func (p *HTTPProxy) fillExcludedRoutes(
 			return err
 		}
 
-		route.Initilize(nil, nil, nil)
+		if err := route.Initilize(); err != nil {
+			return err
+		}
 	}
 	return nil
 }

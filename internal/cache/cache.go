@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"context"
 	"net/http"
 	"sync"
 
@@ -8,14 +9,13 @@ import (
 	"github.com/soldatov-s/accp/internal/cache/cacheerrs"
 	"github.com/soldatov-s/accp/internal/cache/external"
 	"github.com/soldatov-s/accp/internal/cache/memory"
-	context "github.com/soldatov-s/accp/internal/ctx"
-	accpmodels "github.com/soldatov-s/accp/models"
+	"github.com/soldatov-s/accp/models"
 )
 
 type Config struct {
 	Disabled bool
 	Memory   *memory.CacheConfig
-	External *external.CacheConfig
+	External *external.Config
 }
 
 func (cc *Config) Initilize() error {
@@ -67,7 +67,7 @@ type Cache struct {
 	WaiteAnswerMu  map[string]*sync.Mutex
 }
 
-func NewCache(ctx *context.Context, cfg *Config, externalStorage external.Storage) (*Cache, error) {
+func NewCache(ctx context.Context, cfg *Config) (*Cache, error) {
 	var err error
 	c := &Cache{}
 
@@ -76,7 +76,7 @@ func NewCache(ctx *context.Context, cfg *Config, externalStorage external.Storag
 		return nil, err
 	}
 
-	c.External, err = external.NewCache(ctx, cfg.External, externalStorage)
+	c.External, err = external.NewCache(ctx, cfg.External)
 	if err != nil {
 		return nil, err
 	}
@@ -100,7 +100,7 @@ func (c *Cache) Add(key string, data cachedata.CacheData) error {
 	return nil
 }
 
-func (c *Cache) waitAnswer(hk string, ch chan struct{}) (*accpmodels.RRData, error) {
+func (c *Cache) waitAnswer(hk string, ch chan struct{}) (*models.RRData, error) {
 	<-ch
 
 	var (
@@ -108,20 +108,20 @@ func (c *Cache) waitAnswer(hk string, ch chan struct{}) (*accpmodels.RRData, err
 		err error
 	)
 	if v, err = c.Mem.Select(hk); err == nil {
-		value := v.(*accpmodels.RRData)
+		value := v.(*models.RRData)
 		return value, nil
 	}
 	return nil, err
 }
 
-func (c *Cache) Select(key string) (*accpmodels.RRData, error) {
+func (c *Cache) Select(key string) (*models.RRData, error) {
 	var (
-		value         *accpmodels.RRData
+		value         *models.RRData
 		refreshExpire bool
 	)
 	refreshExpire = true
 	if v, err := c.Mem.Select(key); err == nil {
-		value = v.(*accpmodels.RRData)
+		value = v.(*models.RRData)
 		if value.Response.StatusCode > http.StatusBadRequest {
 			refreshExpire = false
 		}
@@ -171,7 +171,7 @@ func (c *Cache) Select(key string) (*accpmodels.RRData, error) {
 			c.WaitAnswerList[key] = ch
 			mu.Unlock() // unlock mutex fast as possible
 
-			value = &accpmodels.RRData{}
+			value = &models.RRData{}
 
 			if err := c.External.Select(key, &value); err != nil {
 				return nil, err

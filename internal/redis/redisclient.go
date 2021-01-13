@@ -1,12 +1,16 @@
-package externalcache
+package redis
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/go-redis/redis/v8"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog"
-	intcxt "github.com/soldatov-s/accp/internal/ctx"
+	"github.com/soldatov-s/accp/internal/logger"
+	"github.com/soldatov-s/accp/internal/metrics"
+	"github.com/soldatov-s/accp/internal/utils"
 	"github.com/soldatov-s/accp/x/rejson"
 )
 
@@ -14,12 +18,19 @@ type empty struct{}
 
 type RedisClient struct {
 	*rejson.Client
-	ctx    context.Context
-	intctx *intcxt.Context
-	log    zerolog.Logger
+	ctx context.Context
+	log zerolog.Logger
+	cfg *Config
+
+	// Metrics
+	metrics.Service
 }
 
-func NewRedisClient(ctx *intcxt.Context, cfg *RedisConfig) (*RedisClient, error) {
+func NewRedisClient(ctx context.Context, cfg *Config) (*RedisClient, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+
 	// Connect to database.
 	connOptions, err := redis.ParseURL(cfg.DSN)
 	if err != nil {
@@ -31,7 +42,11 @@ func NewRedisClient(ctx *intcxt.Context, cfg *RedisConfig) (*RedisClient, error)
 	connOptions.MinIdleConns = cfg.MinIdleConnections
 	connOptions.PoolSize = cfg.MaxOpenedConnections
 
-	r := &RedisClient{ctx: context.Background()}
+	r := &RedisClient{
+		ctx: ctx,
+		cfg: cfg,
+		log: logger.GetPackageLogger(ctx, empty{}),
+	}
 
 	client := redis.NewClient(connOptions)
 	r.Client = rejson.ExtendClient(r.ctx, client)
@@ -39,9 +54,6 @@ func NewRedisClient(ctx *intcxt.Context, cfg *RedisConfig) (*RedisClient, error)
 	if err := r.Ping(r.ctx).Err(); err != nil {
 		return nil, err
 	}
-
-	r.intctx = ctx
-	r.log = ctx.GetPackageLogger(empty{})
 
 	r.log.Info().Msg("Redis connection established")
 	return r, nil
@@ -151,4 +163,37 @@ func (r *RedisClient) JSONDelete(key, path string) error {
 	r.log.Debug().Msgf("JsonDelete key %s in cache", key)
 
 	return nil
+}
+
+// GetMetrics return map of the metrics from cache connection
+func (r *RedisClient) GetMetrics() metrics.MapMetricsOptions {
+	_ = r.Service.GetMetrics()
+	r.Metrics[ProviderName+"_status"] = &metrics.MetricOptions{
+		Metric: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Name: ProviderName + "_status",
+				Help: ProviderName + " status link to " + utils.RedactedDSN(r.cfg.DSN),
+			}),
+		MetricFunc: func(m interface{}) {
+			(m.(prometheus.Gauge)).Set(0)
+			_, err := r.Ping(r.ctx).Result()
+			if err == nil {
+				(m.(prometheus.Gauge)).Set(1)
+			}
+		},
+	}
+	return r.Metrics
+}
+
+// GetReadyHandlers return array of the readyHandlers from database connection
+func (r *RedisClient) GetReadyHandlers() metrics.MapCheckFunc {
+	_ = r.Service.GetReadyHandlers()
+	r.ReadyHandlers[strings.ToUpper(ProviderName+"_notfailed")] = func() (bool, string) {
+		if _, err := r.Ping(r.ctx).Result(); err != nil {
+			return false, err.Error()
+		}
+
+		return true, ""
+	}
+	return r.ReadyHandlers
 }

@@ -1,11 +1,10 @@
 package routes
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
-
-	context "github.com/soldatov-s/accp/internal/ctx"
 )
 
 type MapRoutes map[string]*Route
@@ -41,7 +40,7 @@ func (m MapRoutes) FindRouteByHTTPRequest(r *http.Request) *Route {
 	return m.FindRouteByPath(r.URL.Path)
 }
 
-func (m MapRoutes) AddRouteByPath(ctx *context.Context, path, routeName string, params *Parameters) (*Route, error) {
+func (m MapRoutes) AddRouteByPath(ctx context.Context, path, routeName string, params *Parameters) (*Route, error) {
 	path = strings.Trim(path, "/")
 	strs := strings.Split(path, "/")
 	var (
@@ -76,7 +75,7 @@ func (m MapRoutes) AddRouteByPath(ctx *context.Context, path, routeName string, 
 	return previousLevelRoutes[lastPartOfRoute], nil
 }
 
-func (m MapRoutes) AddExludedRouteByPath(ctx *context.Context, path, routeName string, params *Parameters) (*Route, error) {
+func (m MapRoutes) AddExludedRouteByPath(ctx context.Context, path, routeName string, params *Parameters) (*Route, error) {
 	route, err := m.AddRouteByPath(ctx, path, routeName, params)
 	if err != nil {
 		return nil, err

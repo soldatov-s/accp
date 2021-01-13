@@ -7,7 +7,7 @@ type Config struct {
 	// Parameters are parameters of route
 	Parameters *Parameters
 	// Routes are subroutes of route
-	Routes map[string]*Config
+	Routes MapConfig
 	// Excluded is an excluded subroutes from route
 	Excluded []string
 }

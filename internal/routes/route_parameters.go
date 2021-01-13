@@ -17,7 +17,7 @@ type Parameters struct {
 	Limits   limits.MapConfig
 	Refresh  *refresh.Config
 	Cache    *cache.Config
-	Pool     *httpclient.PoolConfig
+	Pool     *httpclient.Config
 	Methods  helper.Arguments
 	RouteKey string
 	// Introspect if true it means that necessary to introspect request
@@ -47,10 +47,10 @@ func (rp *Parameters) Initilize() error {
 	}
 
 	if rp.Pool == nil {
-		rp.Pool = &httpclient.PoolConfig{}
+		rp.Pool = &httpclient.Config{}
 	}
 
-	if err := rp.Pool.Initilize(); err != nil {
+	if err := rp.Pool.Validate(); err != nil {
 		return err
 	}
 

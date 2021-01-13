@@ -10,62 +10,32 @@ import (
 	"github.com/soldatov-s/accp/internal/introspection"
 	"github.com/soldatov-s/accp/internal/logger"
 	"github.com/soldatov-s/accp/internal/rabbitmq"
-	externalcache "github.com/soldatov-s/accp/internal/redis"
+	"github.com/soldatov-s/accp/internal/redis"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
-type Configuration struct {
+const (
+	DefaultConfigPath = "/etc/accp/config.yml"
+)
+
+type Config struct {
 	Logger       *logger.Config
 	Admin        *admin.Config
 	Proxy        *httpproxy.Config
 	Introspector *introspection.Config
-	Redis        *externalcache.RedisConfig
-	Rabbitmq     *rabbitmq.PublisherConfig
+	Redis        *redis.Config
+	Rabbitmq     *rabbitmq.Config
 }
 
-func NewConfig(command *cobra.Command) (*Configuration, error) {
-	c := &Configuration{}
-	if err := c.initialize(command); err != nil {
-		return nil, err
-	}
-	return c, nil
-}
-
-func (cfg *Configuration) Parse() error {
-	if err := viper.UnmarshalKey("logger", &cfg.Logger); err != nil {
-		return err
-	}
-
-	if err := viper.UnmarshalKey("admin", &cfg.Admin); err != nil {
-		return err
-	}
-
-	if err := viper.UnmarshalKey("introspector", &cfg.Introspector); err != nil {
-		return err
-	}
-
-	if err := viper.UnmarshalKey("proxy", &cfg.Proxy); err != nil {
-		return err
-	}
-
-	if err := viper.UnmarshalKey("redis", &cfg.Redis); err != nil {
-		return err
-	}
-
-	if err := viper.UnmarshalKey("rabbitmq", &cfg.Rabbitmq); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// Initialize initializes configuration control structure and ensures that
-// it is ready for working with configuration.
-func (cfg *Configuration) initialize(command *cobra.Command) error {
+func NewConfig(command *cobra.Command) (*Config, error) {
 	configPath, err := command.Flags().GetString("config")
 	if err != nil {
-		return err
+		return nil, err
+	}
+
+	if configPath == "" {
+		configPath = DefaultConfigPath
 	}
 
 	configPath, configName := path.Split(configPath)
@@ -77,8 +47,12 @@ func (cfg *Configuration) initialize(command *cobra.Command) error {
 
 	err = viper.ReadInConfig() // Find and read the config file
 	if err != nil {            // Handle errors reading the config file
-		return err
+		return nil, err
 	}
 
-	return cfg.Parse()
+	c := &Config{}
+	if err := viper.Unmarshal(c); err != nil {
+		return nil, err
+	}
+	return c, nil
 }

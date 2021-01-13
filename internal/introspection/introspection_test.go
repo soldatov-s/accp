@@ -1,17 +1,16 @@
 package introspection
 
 import (
+	"context"
 	"testing"
 	"time"
 
 	"github.com/soldatov-s/accp/internal/httpclient"
-	testctxhelper "github.com/soldatov-s/accp/x/test_helpers/ctx"
 	"github.com/stretchr/testify/require"
 )
 
 func initTestIntrospector(t *testing.T) *Introspect {
-	ctx := testctxhelper.InitTestCtx(t)
-
+	ctx := context.Background()
 	ic := &Config{
 		DSN:            "http://localhost:8001",
 		Endpoint:       "/oauth2/introspect",
@@ -21,7 +20,7 @@ func initTestIntrospector(t *testing.T) *Introspect {
 		BodyTemplate:   `token_type_hint=access_token&token={{.Token}}`,
 		CookieName:     []string{"access-token"},
 		QueryParamName: []string{"access_token"},
-		Pool: &httpclient.PoolConfig{
+		Pool: &httpclient.Config{
 			Size:    50,
 			Timeout: 10 * time.Second,
 		},

@@ -2,6 +2,7 @@ package introspection
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -10,8 +11,8 @@ import (
 	"text/template"
 
 	"github.com/rs/zerolog"
-	context "github.com/soldatov-s/accp/internal/ctx"
 	"github.com/soldatov-s/accp/internal/httpclient"
+	"github.com/soldatov-s/accp/internal/logger"
 )
 
 const (
@@ -20,35 +21,12 @@ const (
 
 type empty struct{}
 
-type Config struct {
-	// DSN is DSN your authorization service for introspection
-	DSN string
-	// Endpoint is intropsection endpoint on introspection service
-	Endpoint string
-	// ContentType - content type of request
-	ContentType string
-	// Method - REST API method
-	Method string
-	// ValidMarker - marker in answer that shows that token is valid
-	ValidMarker string
-	// BodyTmpl - teplate of body
-	BodyTemplate string
-	// TrimmedFilds - trimed fields in answer from introspector
-	TrimmedFilds []string
-	// CookieName is a list of cookie where may be stored access token
-	CookieName []string
-	// QueryParamName is a list of query parameter where may be stored access token
-	QueryParamName []string
-	// Pool is config for http clients pool
-	Pool *httpclient.PoolConfig
-}
-
 type Introspector interface {
 	IntrospectRequest(r *http.Request) ([]byte, error)
 }
 
 type Introspect struct {
-	ctx          *context.Context
+	ctx          context.Context
 	cfg          *Config
 	log          zerolog.Logger
 	bodyTmpl     *template.Template
@@ -57,17 +35,24 @@ type Introspect struct {
 }
 
 // NewIntrospector creates Intrcopector
-func NewIntrospector(ctx *context.Context, cfg *Config) (*Introspect, error) {
-	i := &Introspect{ctx: ctx, cfg: cfg}
-
-	i.pool = httpclient.NewPool(i.cfg.Pool)
-	var err error
-	i.bodyTmpl, err = template.New("body").Parse(i.cfg.BodyTemplate)
+func NewIntrospector(ctx context.Context, cfg *Config) (*Introspect, error) {
+	err := cfg.Validate()
 	if err != nil {
 		return nil, err
 	}
 
-	i.log = ctx.GetPackageLogger(empty{})
+	i := &Introspect{
+		ctx:  ctx,
+		cfg:  cfg,
+		log:  logger.GetPackageLogger(ctx, empty{}),
+		pool: httpclient.NewPool(cfg.Pool),
+	}
+
+	i.bodyTmpl, err = template.New("body").Parse(cfg.BodyTemplate)
+	if err != nil {
+		return nil, err
+	}
+
 	i.initRegex()
 
 	return i, nil
