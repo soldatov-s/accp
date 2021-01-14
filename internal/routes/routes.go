@@ -20,7 +20,7 @@ import (
 	"github.com/soldatov-s/accp/internal/logger"
 	"github.com/soldatov-s/accp/internal/publisher"
 	"github.com/soldatov-s/accp/internal/rabbitmq"
-	"github.com/soldatov-s/accp/models"
+	rrdata "github.com/soldatov-s/accp/internal/request_response_data"
 )
 
 type empty struct{}
@@ -123,7 +123,7 @@ func (r *Route) CheckLimits(req *http.Request) (*bool, error) {
 	return &result, nil
 }
 
-func (r *Route) refreshHandler(hk string, data *models.RequestResponseData) error {
+func (r *Route) refreshHandler(hk string, data *rrdata.RequestResponseData) error {
 	data.Mu.Lock()
 	defer data.Mu.RUnlock()
 
@@ -164,7 +164,7 @@ func (r *Route) refreshHandler(hk string, data *models.RequestResponseData) erro
 
 func (r *Route) refreshByTime() {
 	r.Cache.Mem.Range(func(k, v interface{}) bool {
-		data := v.(*cachedata.CacheItem).Data.(*models.RequestResponseData)
+		data := v.(*cachedata.CacheItem).Data.(*rrdata.RequestResponseData)
 		hk := k.(string)
 		go func() {
 			if err := r.refreshHandler(hk, data); err != nil {
@@ -186,7 +186,7 @@ func (r *Route) Publish(message interface{}) error {
 	return r.publisher.SendMessage(message, r.Parameters.RouteKey)
 }
 
-func (r *Route) requestToBack(hk string, w http.ResponseWriter, req *http.Request) *models.RequestResponseData {
+func (r *Route) requestToBack(hk string, w http.ResponseWriter, req *http.Request) *rrdata.RequestResponseData {
 	var err error
 	// Proxy request to backend
 	client := r.Pool.GetFromPool()
@@ -205,7 +205,7 @@ func (r *Route) requestToBack(hk string, w http.ResponseWriter, req *http.Reques
 	}
 	defer resp.Body.Close()
 
-	rrData := models.NewRequestResponseData(hk, r.Parameters.Refresh.Count, r.Cache.External)
+	rrData := rrdata.NewRequestResponseData(hk, r.Parameters.Refresh.Count, r.Cache.External)
 	if err := rrData.ReadAll(req, resp); err != nil {
 		r.log.Err(err).Msg("failed to read request/response data")
 	}
@@ -271,7 +271,7 @@ func (r *Route) HydrationIntrospect(req *http.Request) error {
 }
 
 // refresh incremets refresh count and checks that we not reached the limit
-func (r *Route) refresh(data *models.RequestResponseData, hk string) {
+func (r *Route) refresh(data *rrdata.RequestResponseData, hk string) {
 	// Check that we have refresh limit by request count
 	if r.Parameters.Refresh.Count == 0 {
 		return
@@ -291,11 +291,11 @@ func (r *Route) refresh(data *models.RequestResponseData, hk string) {
 	}
 }
 
-func (r *Route) responseHandle(data *models.RequestResponseData, w http.ResponseWriter, req *http.Request, hk string) {
+func (r *Route) responseHandle(data *rrdata.RequestResponseData, w http.ResponseWriter, req *http.Request, hk string) {
 	// If data was get from redis, the request will be empty
 	if data.Request == nil {
 		var err error
-		if data.Request, err = models.NewRequest(req); err != nil {
+		if data.Request, err = rrdata.NewRequest(req); err != nil {
 			r.log.Err(err).Msg("failed to read data from request")
 		}
 	}

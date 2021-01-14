@@ -9,7 +9,7 @@ import (
 	"github.com/soldatov-s/accp/internal/cache/cacheerrs"
 	"github.com/soldatov-s/accp/internal/cache/external"
 	"github.com/soldatov-s/accp/internal/cache/memory"
-	"github.com/soldatov-s/accp/models"
+	rrdata "github.com/soldatov-s/accp/internal/request_response_data"
 )
 
 type Config struct {
@@ -85,7 +85,7 @@ func (c *Cache) Add(key string, data cachedata.CacheData) error {
 	return nil
 }
 
-func (c *Cache) waitAnswer(hk string, ch chan struct{}) (*models.RequestResponseData, error) {
+func (c *Cache) waitAnswer(hk string, ch chan struct{}) (*rrdata.RequestResponseData, error) {
 	<-ch
 
 	var (
@@ -93,20 +93,20 @@ func (c *Cache) waitAnswer(hk string, ch chan struct{}) (*models.RequestResponse
 		err error
 	)
 	if v, err = c.Mem.Select(hk); err == nil {
-		value := v.(*models.RequestResponseData)
+		value := v.(*rrdata.RequestResponseData)
 		return value, nil
 	}
 	return nil, err
 }
 
-func (c *Cache) Select(key string) (*models.RequestResponseData, error) {
+func (c *Cache) Select(key string) (*rrdata.RequestResponseData, error) {
 	var (
-		value         *models.RequestResponseData
+		value         *rrdata.RequestResponseData
 		refreshExpire bool
 	)
 	refreshExpire = true
 	if v, err := c.Mem.Select(key); err == nil {
-		value = v.(*models.RequestResponseData)
+		value = v.(*rrdata.RequestResponseData)
 		if value.Response.StatusCode > http.StatusBadRequest {
 			refreshExpire = false
 		}
@@ -156,7 +156,7 @@ func (c *Cache) Select(key string) (*models.RequestResponseData, error) {
 			c.WaitAnswerList[key] = ch
 			mu.Unlock() // unlock mutex fast as possible
 
-			value = &models.RequestResponseData{}
+			value = &rrdata.RequestResponseData{}
 
 			if err := c.External.Select(key, &value); err != nil {
 				return nil, err
