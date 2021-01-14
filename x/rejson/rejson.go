@@ -82,6 +82,10 @@ func (cl *redisProcessor) JSONDEL(key, path string) *redis.IntCmd {
 	return jsonDelExecute(cl, key, path)
 }
 
+func (cl *redisProcessor) JsonNumIncrBy(key, path string, num int) *redis.StringCmd {
+	return jsonNumIncrByExecute(cl, key, path, num)
+}
+
 func concatWithCmd(cmdName string, args []interface{}) []interface{} {
 	res := make([]interface{}, 1)
 	res[0] = cmdName
@@ -110,6 +114,12 @@ func jsonSetExecute(c *redisProcessor, args ...interface{}) *redis.StatusCmd {
 
 func jsonDelExecute(c *redisProcessor, args ...interface{}) *redis.IntCmd {
 	cmd := redis.NewIntCmd(c.ctx, concatWithCmd("JSON.DEL", args)...)
+	_ = c.Process(c.ctx, cmd)
+	return cmd
+}
+
+func jsonNumIncrByExecute(c *redisProcessor, args ...interface{}) *redis.StringCmd {
+	cmd := redis.NewStringCmd(c.ctx, concatWithCmd("JSON.NUMINCRBY", args)...)
 	_ = c.Process(c.ctx, cmd)
 	return cmd
 }

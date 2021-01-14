@@ -14,6 +14,16 @@ type Config struct {
 	PT time.Duration
 }
 
+func (c *Config) Validate() {
+	if c.Counter == 0 {
+		c.Counter = 1000
+	}
+
+	if c.PT == 0 {
+		c.PT = time.Minute
+	}
+}
+
 type MapConfig map[string]*Config
 
 func NewMapConfig() MapConfig {

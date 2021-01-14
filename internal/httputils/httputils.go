@@ -1,9 +1,11 @@
 package httputils
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/base64"
 	"io"
+	"io/ioutil"
 	"net/http"
 
 	"github.com/valyala/bytebufferpool"
@@ -37,4 +39,17 @@ func HashRequest(r *http.Request) (string, error) {
 
 	sum := sha256.New().Sum([]byte(r.URL.RequestURI() + buf.String() + introspectBody))
 	return base64.URLEncoding.EncodeToString(sum), nil
+}
+
+func ErrResponse(errormsg string, code int) *http.Response {
+	resp := &http.Response{
+		StatusCode: code,
+		Body:       ioutil.NopCloser(bytes.NewBufferString(errormsg)),
+	}
+
+	resp.Header = make(http.Header)
+	resp.Header.Set("Content-Type", "text/plain; charset=utf-8")
+	resp.Header.Set("X-Content-Type-Options", "nosniff")
+
+	return resp
 }

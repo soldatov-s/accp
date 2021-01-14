@@ -46,8 +46,6 @@ func initRouteParameters(t *testing.T) *Parameters {
 }
 
 func initRoute(t *testing.T) *Route {
-	var err error
-
 	ctx := context.Background()
 	params := initRouteParameters(t)
 	r := NewRoute(ctx, "/api/v1/users", params)
@@ -70,8 +68,7 @@ func initRoute(t *testing.T) *Route {
 	// i, err := introspection.NewIntrospector(ctx, ic)
 	// require.Nil(t, err)
 
-	err = r.Initilize()
-	require.Nil(t, err)
+	r.Initilize()
 
 	return r
 }

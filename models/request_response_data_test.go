@@ -10,15 +10,13 @@ import (
 )
 
 func TestRRDataMarshalBinary(t *testing.T) {
-	data := RRData{}
-	data.RData.Refresh.Counter = 1
-	data.RData.Refresh.MaxCount = 2
-	data.RData.UUID = uuid.New()
-	data.RData.Response = &Response{
+	data := NewRequestResponseData("zzz", 2, nil)
+	data.Response = &ResponseData{
 		Body:       "hello",
 		Header:     make(http.Header),
 		StatusCode: http.StatusOK,
 		TimeStamp:  time.Now().Unix(),
+		UUID:       uuid.New(),
 	}
 
 	m, err := data.MarshalBinary()

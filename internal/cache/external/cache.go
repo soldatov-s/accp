@@ -10,7 +10,6 @@ import (
 	"github.com/soldatov-s/accp/internal/cache/cacheerrs"
 	"github.com/soldatov-s/accp/internal/logger"
 	"github.com/soldatov-s/accp/internal/redis"
-	externalcache "github.com/soldatov-s/accp/internal/redis"
 )
 
 type empty struct{}
@@ -28,8 +27,11 @@ type Storage interface {
 	JSONGet(key, path string, value interface{}) error
 	JSONSet(key, path, json string) error
 	JSONSetNX(key, path, json string) error
-	NewMutexByID(lockID string, expire, checkInterval time.Duration) (*externalcache.Mutex, error)
+	NewMutexByID(lockID string, expire, checkInterval time.Duration) redis.IMutex
 	JSONDelete(key, path string) error
+	JSONNumIncrBy(key, path string, num int) error
+	LimitTTL(key string, ttl time.Duration) error
+	LimitCount(key string, num int) error
 }
 
 type Cache struct {
@@ -39,11 +41,13 @@ type Cache struct {
 	ExternalStorage Storage
 }
 
-func NewCache(ctx context.Context, cfg *Config) (*Cache, error) {
+func NewCache(ctx context.Context, cfg *Config) *Cache {
 	externalStorage := redis.Get(ctx)
 	if externalStorage == nil {
-		return nil, nil
+		return nil
 	}
+
+	cfg.Validate()
 
 	c := &Cache{
 		ctx:             ctx,
@@ -54,7 +58,7 @@ func NewCache(ctx context.Context, cfg *Config) (*Cache, error) {
 
 	c.log.Info().Msg("created external cache")
 
-	return c, nil
+	return c
 }
 
 func (c *Cache) Add(key string, data cachedata.CacheData) error {
@@ -149,8 +153,8 @@ func (c *Cache) GetUUID(key string, uuid *string) error {
 	return nil
 }
 
-func (c *Cache) NewMutexByID(lockID string, expire, checkInterval time.Duration) (*externalcache.Mutex, error) {
-	return c.ExternalStorage.NewMutexByID(lockID, expire, checkInterval)
+func (c *Cache) NewMutexByID(lockID string, expire, checkInterval time.Duration) redis.IMutex {
+	return c.ExternalStorage.NewMutexByID("mu_"+lockID, expire, checkInterval)
 }
 
 func (c *Cache) JSONDelete(key, path string) error {
@@ -160,6 +164,39 @@ func (c *Cache) JSONDelete(key, path string) error {
 	}
 
 	c.log.Debug().Msgf("delete %s from external cache", key)
+
+	return nil
+}
+
+func (c *Cache) LimitTTL(key string, ttl time.Duration) error {
+	err := c.ExternalStorage.LimitTTL(c.cfg.KeyPrefix+key, ttl)
+	if err != nil {
+		return err
+	}
+
+	c.log.Debug().Msgf("limit ttl %s external cache", key)
+
+	return nil
+}
+
+func (c *Cache) LimitCount(key string, num int) error {
+	err := c.ExternalStorage.LimitCount(c.cfg.KeyPrefix+key, num)
+	if err != nil {
+		return err
+	}
+
+	c.log.Debug().Msgf("limit count %s external cache", key)
+
+	return nil
+}
+
+func (c *Cache) JSONNumIncrBy(key, path string, num int) error {
+	err := c.ExternalStorage.JSONNumIncrBy(c.cfg.KeyPrefix+key, path, num)
+	if err != nil {
+		return err
+	}
+
+	c.log.Debug().Msgf("jsonNumIncrByExecute %s:%s:%d to external cache", key, path, num)
 
 	return nil
 }

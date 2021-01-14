@@ -23,13 +23,8 @@ func (cc *Config) Initilize() error {
 		cc.Memory = &memory.CacheConfig{}
 	}
 
-	if err := cc.Memory.Initilize(); err != nil {
-		return err
-	}
-
-	if cc.External != nil {
-		return cc.External.Initilize()
-	}
+	cc.Memory.Validate()
+	cc.External.Validate()
 
 	return nil
 }
@@ -67,21 +62,11 @@ type Cache struct {
 	WaiteAnswerMu  map[string]*sync.Mutex
 }
 
-func NewCache(ctx context.Context, cfg *Config) (*Cache, error) {
-	var err error
-	c := &Cache{}
-
-	c.Mem, err = memory.NewCache(ctx, cfg.Memory)
-	if err != nil {
-		return nil, err
+func NewCache(ctx context.Context, cfg *Config) *Cache {
+	return &Cache{
+		Mem:      memory.NewCache(ctx, cfg.Memory),
+		External: external.NewCache(ctx, cfg.External),
 	}
-
-	c.External, err = external.NewCache(ctx, cfg.External)
-	if err != nil {
-		return nil, err
-	}
-
-	return c, nil
 }
 
 func (c *Cache) Add(key string, data cachedata.CacheData) error {
@@ -100,7 +85,7 @@ func (c *Cache) Add(key string, data cachedata.CacheData) error {
 	return nil
 }
 
-func (c *Cache) waitAnswer(hk string, ch chan struct{}) (*models.RRData, error) {
+func (c *Cache) waitAnswer(hk string, ch chan struct{}) (*models.RequestResponseData, error) {
 	<-ch
 
 	var (
@@ -108,20 +93,20 @@ func (c *Cache) waitAnswer(hk string, ch chan struct{}) (*models.RRData, error) 
 		err error
 	)
 	if v, err = c.Mem.Select(hk); err == nil {
-		value := v.(*models.RRData)
+		value := v.(*models.RequestResponseData)
 		return value, nil
 	}
 	return nil, err
 }
 
-func (c *Cache) Select(key string) (*models.RRData, error) {
+func (c *Cache) Select(key string) (*models.RequestResponseData, error) {
 	var (
-		value         *models.RRData
+		value         *models.RequestResponseData
 		refreshExpire bool
 	)
 	refreshExpire = true
 	if v, err := c.Mem.Select(key); err == nil {
-		value = v.(*models.RRData)
+		value = v.(*models.RequestResponseData)
 		if value.Response.StatusCode > http.StatusBadRequest {
 			refreshExpire = false
 		}
@@ -143,7 +128,7 @@ func (c *Cache) Select(key string) (*models.RRData, error) {
 		// Checking that item in external cache not changed
 		var UUID string
 		if err := c.External.GetUUID(key, &UUID); err == nil {
-			if value.UUID.String() == UUID {
+			if value.Response.UUID.String() == UUID {
 				return value, nil
 			}
 		}
@@ -171,7 +156,7 @@ func (c *Cache) Select(key string) (*models.RRData, error) {
 			c.WaitAnswerList[key] = ch
 			mu.Unlock() // unlock mutex fast as possible
 
-			value = &models.RRData{}
+			value = &models.RequestResponseData{}
 
 			if err := c.External.Select(key, &value); err != nil {
 				return nil, err

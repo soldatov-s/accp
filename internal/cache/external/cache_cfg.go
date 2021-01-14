@@ -8,7 +8,7 @@ type Config struct {
 	TTLErr    time.Duration
 }
 
-func (cc *Config) Initilize() error {
+func (cc *Config) Validate() {
 	if cc.KeyPrefix == "" {
 		cc.KeyPrefix = defaultKeyPrefix
 	}
@@ -16,8 +16,6 @@ func (cc *Config) Initilize() error {
 	if cc.TTL == 0 {
 		cc.TTL = defaultTTL
 	}
-
-	return nil
 }
 
 func (cc *Config) Merge(target *Config) *Config {

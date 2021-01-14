@@ -1,7 +1,6 @@
 package limits
 
 import (
-	"encoding/json"
 	"sync"
 	"time"
 
@@ -12,88 +11,80 @@ import (
 type Limit struct {
 	Counter    int   `json:"counter"`
 	LastAccess int64 `json:"lastaccess"` // Unix time
+
+}
+
+func NewLimit() *Limit {
+	return &Limit{
+		Counter:    1,
+		LastAccess: time.Now().Unix(),
+	}
 }
 
 // LimitTable contains multiple parameters from requests and their current limits
 // e.g. we set limit for authorization tokens, we recive the multiple requsts with
 // different tokens. LimitTable will be contain each token and its current state of limit
 type LimitTable struct {
-	List       sync.Map
+	List map[string]*Limit
+	mu   sync.Mutex
+	PT   time.Duration
+
 	clearTimer *time.Timer
-	PT         time.Duration
+	cache      *external.Cache
+	route      string
 }
 
-func NewLimitTable(c *Config) *LimitTable {
+func NewLimitTable(route string, c *Config, cache *external.Cache) *LimitTable {
+	c.Validate()
+
 	lt := &LimitTable{
-		PT: c.PT,
+		PT:    c.PT,
+		cache: cache,
+		route: route,
+		List:  make(map[string]*Limit),
 	}
 
 	lt.clearTimer = time.AfterFunc(lt.PT, lt.clearTable)
 	return lt
 }
 
-func (lt *LimitTable) clearTable() {
-	timeNow := time.Now().UTC()
-	lt.List.Range(func(k, v interface{}) bool {
-		if time.Unix(v.(*Limit).LastAccess, 0).UTC().Sub(timeNow) > lt.PT {
-			lt.List.Delete(k)
-		}
-		return true
-	})
+func (t *LimitTable) Inc(value string) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 
-	lt.clearTimer.Reset(lt.PT)
+	v, ok := t.List[value]
+	if !ok {
+		l := NewLimit()
+		t.List[value] = l
+	}
+
+	if t.cache != nil {
+		if err := t.cache.Select(t.route+"_"+value, &v.Counter); err != nil {
+			return err
+		}
+	}
+
+	v.Counter++
+	v.LastAccess = time.Now().Unix()
+	return t.cache.LimitTTL(t.route+"_"+value, t.PT)
 }
 
-func NewLimits(lc MapConfig) map[string]*LimitTable {
+func (t *LimitTable) clearTable() {
+	timeNow := time.Now().UTC()
+
+	for k, v := range t.List {
+		if time.Unix(v.LastAccess, 0).UTC().Sub(timeNow) > t.PT {
+			delete(t.List, k)
+		}
+	}
+
+	t.clearTimer.Reset(t.PT)
+}
+
+func NewLimits(route string, lc MapConfig, cache *external.Cache) map[string]*LimitTable {
 	l := make(map[string]*LimitTable)
 	for k, c := range lc {
-		l[k] = NewLimitTable(c)
+		l[k] = NewLimitTable(route, c, cache)
 	}
 	return l
-}
-
-func (l *Limit) LoadLimit(route, key string, externalStorage *external.Cache) error {
-	if externalStorage == nil {
-		return nil
-	}
-
-	if err := externalStorage.JSONGet(key+"_"+route, ".", l); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (l *Limit) UpdateLimit(route, key string, externalStorage *external.Cache, ttl time.Duration) error {
-	if externalStorage == nil {
-		return nil
-	}
-
-	limitData, err := json.Marshal(l)
-	if err != nil {
-		return err
-	}
-
-	if err := externalStorage.ExternalStorage.JSONSet(key+"_"+route, ".", string(limitData)); err != nil {
-		return err
-	}
-
-	return externalStorage.ExternalStorage.Expire(key+"_"+route, ttl)
-}
-
-func (l *Limit) CreateLimit(route, key string, externalStorage *external.Cache, ttl time.Duration) error {
-	if externalStorage == nil {
-		return nil
-	}
-
-	limitData, err := json.Marshal(l)
-	if err != nil {
-		return err
-	}
-
-	if err := externalStorage.JSONSetNX(key+"_"+route, ".", string(limitData)); err != nil {
-		return err
-	}
-
-	return externalStorage.ExternalStorage.Expire(key+"_"+route, ttl)
 }

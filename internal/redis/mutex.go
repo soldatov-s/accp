@@ -1,14 +1,9 @@
 package redis
 
 import (
-	// stdlib
 	"errors"
 	"sync"
 	"time"
-
-	// local
-
-	// other
 
 	"github.com/google/uuid"
 )
@@ -24,6 +19,12 @@ var (
 	ErrNotLockKey           = errors.New("passed lockID is not string")
 )
 
+type IMutex interface {
+	Lock() (err error)
+	Unlock() (err error)
+	Extend(timeout time.Duration) (err error)
+}
+
 // Mutex provides a distributed mutex across multiple instances via Redis
 type Mutex struct {
 	conn          *RedisClient
@@ -37,12 +38,12 @@ type Mutex struct {
 }
 
 // NewMutex creates new distributed redis mutex
-func (r *RedisClient) NewMutex(conn *RedisClient, expire, checkInterval time.Duration) (*Mutex, error) {
+func (r *RedisClient) NewMutex(conn *RedisClient, expire, checkInterval time.Duration) IMutex {
 	return r.NewMutexByID(defaultLockID, expire, checkInterval)
 }
 
 // NewMutexByID creates new distributed redis mutex by ID
-func (r *RedisClient) NewMutexByID(id string, expire, checkInterval time.Duration) (*Mutex, error) {
+func (r *RedisClient) NewMutexByID(id string, expire, checkInterval time.Duration) IMutex {
 	checkIntervalValue := checkInterval
 	if checkIntervalValue == 0 {
 		checkIntervalValue = defaultCheckInterval
@@ -59,7 +60,7 @@ func (r *RedisClient) NewMutexByID(id string, expire, checkInterval time.Duratio
 		checkInterval: checkIntervalValue,
 		expire:        expireValue,
 		locked:        false,
-	}, nil
+	}
 }
 
 // Lock sets Redis-lock item. It is blocking call which will wait until

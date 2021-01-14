@@ -12,8 +12,8 @@ import (
 	"github.com/valyala/bytebufferpool"
 )
 
-// Request describes structure for holding information about request
-type Request struct {
+// RequestData describes structure for holding information about request
+type RequestData struct {
 	URL    string
 	Method string
 	Body   string
@@ -21,15 +21,24 @@ type Request struct {
 	mu     sync.RWMutex
 }
 
-func (r *Request) MarshalBinary() (data []byte, err error) {
+func NewRequest(req *http.Request) (*RequestData, error) {
+	r := &RequestData{}
+	if err := r.Read(req); err != nil {
+		return nil, err
+	}
+
+	return r, nil
+}
+
+func (r *RequestData) MarshalBinary() (data []byte, err error) {
 	return json.Marshal(r)
 }
 
-func (r *Request) UnmarshalBinary(data []byte) error {
+func (r *RequestData) UnmarshalBinary(data []byte) error {
 	return json.Unmarshal(data, r)
 }
 
-func (r *Request) Read(req *http.Request) error {
+func (r *RequestData) Read(req *http.Request) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -52,7 +61,7 @@ func (r *Request) Read(req *http.Request) error {
 	return nil
 }
 
-func (r *Request) BuildRequest() (*http.Request, error) {
+func (r *RequestData) BuildRequest() (*http.Request, error) {
 	if r == nil {
 		return nil, errors.New("empty request")
 	}

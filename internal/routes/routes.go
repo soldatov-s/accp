@@ -1,16 +1,15 @@
 package routes
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/soldatov-s/accp/internal/cache"
 	"github.com/soldatov-s/accp/internal/cache/cachedata"
@@ -24,11 +23,6 @@ import (
 	"github.com/soldatov-s/accp/models"
 )
 
-const (
-	defaultRefreshMutexExpire = 30 * time.Second
-	checkInterval             = 100 * time.Millisecond
-)
-
 type empty struct{}
 
 type Route struct {
@@ -38,15 +32,14 @@ type Route struct {
 	Routes         MapRoutes
 	Cache          *cache.Cache
 	Pool           *httpclient.Pool
-	WaitAnswerList map[string]chan struct{}
-	WaiteAnswerMu  map[string]*sync.Mutex
-	Publisher      publisher.Publisher
+	waitAnswerList map[string]chan struct{}
+	waiteAnswerMu  map[string]*sync.Mutex
+	publisher      publisher.Publisher
 	RefreshTimer   *time.Timer
 	Limits         map[string]*limits.LimitTable
-	Route          string
-	Introspector   introspection.Introspector
-	Excluded       bool
-	Introspect     bool
+	route          string
+	introspector   introspection.Introspector
+	excluded       bool
 }
 
 func NewRoute(ctx context.Context, routeName string, params *Parameters) *Route {
@@ -54,86 +47,54 @@ func NewRoute(ctx context.Context, routeName string, params *Parameters) *Route 
 		ctx:            ctx,
 		log:            logger.GetPackageLogger(ctx, empty{}),
 		Parameters:     params,
-		Route:          routeName,
+		route:          routeName,
 		Routes:         make(MapRoutes),
-		Publisher:      rabbitmq.Get(ctx),
-		Introspector:   introspection.Get(ctx),
-		WaitAnswerList: make(map[string]chan struct{}),
-		WaiteAnswerMu:  make(map[string]*sync.Mutex),
-		Limits:         limits.NewLimits(params.Limits),
-		Introspect:     params.Introspect,
+		publisher:      rabbitmq.Get(ctx),
+		introspector:   introspection.Get(ctx),
+		waitAnswerList: make(map[string]chan struct{}),
+		waiteAnswerMu:  make(map[string]*sync.Mutex),
 	}
 }
 
-func (r *Route) Initilize() error {
-	var err error
-
+func (r *Route) Initilize() {
 	r.Pool = httpclient.NewPool(r.Parameters.Pool)
 
-	if r.Cache, err = cache.NewCache(r.ctx, r.Parameters.Cache); err != nil {
-		return err
+	if r.excluded {
+		return
 	}
+
+	r.Cache = cache.NewCache(r.ctx, r.Parameters.Cache)
+	r.Limits = limits.NewLimits(r.route, r.Parameters.Limits, r.Cache.External)
 
 	if r.Parameters.Refresh.Time > 0 {
-		r.RefreshTimer = time.AfterFunc(r.Parameters.Refresh.Time, r.RefreshHandler)
+		r.RefreshTimer = time.AfterFunc(r.Parameters.Refresh.Time, r.refreshByTime)
 	}
+}
 
-	return nil
+func (r *Route) IsExcluded() bool {
+	return r.excluded
 }
 
 // checkLimit checks limit
-func (r *Route) checkLimit(k, v string, result *bool) error {
-	if vv, ok := (r.Limits[k]).List.Load(v); !ok {
-		r.Limits[k].List.Store(v, &limits.Limit{
-			Counter:    1,
-			LastAccess: time.Now().Unix(),
-		})
-		if err := vv.(*limits.Limit).CreateLimit(r.Route, k, r.Cache.External, r.Limits[k].PT); err != nil {
+func (r *Route) checkLimit(limitName, limitValue string, result *bool) error {
+	var (
+		vv *limits.Limit
+		ok bool
+	)
+	if vv, ok = (r.Limits[limitName]).List[limitValue]; !ok {
+		if err := (r.Limits[limitName]).Inc(limitValue); err != nil {
 			return err
 		}
-	} else {
-		mu, err := r.Cache.External.NewMutexByID(r.Route+"_"+k, defaultRefreshMutexExpire, checkInterval)
-		if err != nil {
-			r.log.Err(err).Msg("INTERNAL SERVER ERROR")
+		return nil
+	}
 
-			return err
-		}
+	if err := (r.Limits[limitName]).Inc(limitValue); err != nil {
+		return err
+	}
 
-		defer func() {
-			err1 := mu.Unlock()
-			if err1 != nil {
-				r.log.Err(err1).Msg("INTERNAL SERVER ERROR")
-			}
-		}()
-
-		err = mu.Lock()
-		if err != nil {
-			r.log.Err(err).Msg("INTERNAL SERVER ERROR")
-
-			return err
-		}
-
-		if err := vv.(*limits.Limit).LoadLimit(r.Route, k, r.Cache.External); err != nil {
-			r.log.Err(err).Msgf("failed to get limit %s from external cache", k)
-		}
-
-		vv.(*limits.Limit).Counter++
-
-		if vv.(*limits.Limit).Counter >= r.Parameters.Limits[k].Counter &&
-			time.Now().Add(-r.Parameters.Limits[k].PT).Unix() < vv.(*limits.Limit).LastAccess {
-			*result = *result && false
-			r.log.Debug().Msgf("limit reached: %s", k)
-			return nil
-		} else if time.Now().Add(-r.Parameters.Limits[k].PT).Unix() >= vv.(*limits.Limit).LastAccess {
-			vv.(*limits.Limit).Counter = 1
-			vv.(*limits.Limit).LastAccess = time.Now().Unix()
-		}
-
-		go func() {
-			if err := vv.(*limits.Limit).UpdateLimit(r.Route, k, r.Cache.External, r.Limits[k].PT); err != nil {
-				r.log.Err(err).Msgf("failed to update limit %s in external cache", k)
-			}
-		}()
+	if vv.Counter >= r.Parameters.Limits[limitName].Counter {
+		*result = *result && false
+		r.log.Debug().Msgf("limit reached: %s", limitName)
 	}
 
 	return nil
@@ -154,28 +115,60 @@ func (r *Route) CheckLimits(req *http.Request) (*bool, error) {
 	for k, v := range limitList {
 		if err := r.checkLimit(k, v, &result); err != nil {
 			return nil, err
+		} else if !result {
+			break
 		}
 	}
 
 	return &result, nil
 }
 
-func (r *Route) RefreshHandler() {
+func (r *Route) refreshHandler(hk string, data *models.RequestResponseData) error {
+	data.Mu.Lock()
+	defer data.Mu.RUnlock()
+
+	req, err := data.Request.BuildRequest()
+	if err != nil {
+		return errors.Wrap(err, "failed to build request")
+	}
+
+	if err = r.HydrationIntrospect(req); err != nil {
+		r.log.Err(err).Msg("")
+		if err = r.Cache.Delete(hk); err != nil {
+			return errors.Wrap(err, "introspection failed, delete key failed")
+		}
+		return errors.Wrap(err, "introspection failed")
+	}
+
+	client := r.Pool.GetFromPool()
+	defer r.Pool.PutToPool(client)
+
+	if err := data.UpdateByRequest(client, req); err != nil {
+		if err = r.Cache.Delete(hk); err != nil {
+			return errors.Wrap(err, "failed to update request/response data, delete key failed")
+		}
+		return errors.Wrap(err, "failed to update request/response data")
+	}
+
+	if r.Cache.External == nil {
+		return nil
+	}
+
+	if err := r.Cache.External.Update(hk, data); err != nil {
+		return errors.Wrap(err, "failed to update external cache")
+	}
+
+	r.log.Debug().Msgf("%s: cache refreshed", hk)
+	return nil
+}
+
+func (r *Route) refreshByTime() {
 	r.Cache.Mem.Range(func(k, v interface{}) bool {
-		data := v.(*cachedata.CacheItem).Data.(*models.RRData)
-
+		data := v.(*cachedata.CacheItem).Data.(*models.RequestResponseData)
+		hk := k.(string)
 		go func() {
-			client := r.Pool.GetFromPool()
-			if err := data.Update(client); err != nil {
-				r.log.Err(err).Msg("failed to update inmemory cache")
-			}
-
-			if r.Cache.External == nil {
-				return
-			}
-
-			if err := r.Cache.External.Update(k.(string), data); err != nil {
-				r.log.Err(err).Msg("failed to update external cache")
+			if err := r.refreshHandler(hk, data); err != nil {
+				r.log.Error().Err(err).Msgf("%s: refresh cache failed", hk)
 			}
 		}()
 
@@ -187,13 +180,13 @@ func (r *Route) RefreshHandler() {
 
 // Publish publishes request from client to message queue
 func (r *Route) Publish(message interface{}) error {
-	if r.Publisher == nil {
+	if r.publisher == nil {
 		return nil
 	}
-	return r.Publisher.SendMessage(message, r.Parameters.RouteKey)
+	return r.publisher.SendMessage(message, r.Parameters.RouteKey)
 }
 
-func (r *Route) RequestToBack(w http.ResponseWriter, req *http.Request) *models.RRData {
+func (r *Route) requestToBack(hk string, w http.ResponseWriter, req *http.Request) *models.RequestResponseData {
 	var err error
 	// Proxy request to backend
 	client := r.Pool.GetFromPool()
@@ -202,25 +195,19 @@ func (r *Route) RequestToBack(w http.ResponseWriter, req *http.Request) *models.
 	var resp *http.Response
 	req.URL, err = url.Parse(r.Parameters.DSN + req.URL.String())
 	if err != nil {
-		resp = errResponse(err.Error(), http.StatusServiceUnavailable)
+		resp = httputils.ErrResponse(err.Error(), http.StatusServiceUnavailable)
 	} else {
 		// nolint
 		resp, err = client.Do(req)
 		if err != nil {
-			resp = errResponse(err.Error(), http.StatusServiceUnavailable)
+			resp = httputils.ErrResponse(err.Error(), http.StatusServiceUnavailable)
 		}
 	}
 	defer resp.Body.Close()
 
-	rrData := models.NewRRData()
-	if err := rrData.Request.Read(req); err != nil {
-		r.log.Err(err).Msg("failed to read data from request")
-	}
-
-	rrData.Refresh.MaxCount = r.Parameters.Refresh.Count
-
-	if err := rrData.Response.Read(resp); err != nil {
-		r.log.Err(err).Msg("failed to read data from response")
+	rrData := models.NewRequestResponseData(hk, r.Parameters.Refresh.Count, r.Cache.External)
+	if err := rrData.ReadAll(req, resp); err != nil {
+		r.log.Err(err).Msg("failed to read request/response data")
 	}
 
 	if err := rrData.Response.Write(w); err != nil {
@@ -256,26 +243,13 @@ func (r *Route) NotCached(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func errResponse(errormsg string, code int) *http.Response {
-	resp := &http.Response{
-		StatusCode: code,
-		Body:       ioutil.NopCloser(bytes.NewBufferString(errormsg)),
-	}
-
-	resp.Header = make(http.Header)
-	resp.Header.Set("Content-Type", "text/plain; charset=utf-8")
-	resp.Header.Set("X-Content-Type-Options", "nosniff")
-
-	return resp
-}
-
 func (r *Route) HydrationIntrospect(req *http.Request) error {
-	if r.Introspector == nil || !r.Introspect {
-		r.log.Debug().Msgf("no introspector or disabled introspection: %s", r.Route)
+	if r.introspector == nil || !r.Parameters.Introspect {
+		r.log.Debug().Msgf("no introspector or disabled introspection: %s", r.route)
 		return nil
 	}
 
-	content, err := r.Introspector.IntrospectRequest(req)
+	content, err := r.introspector.IntrospectRequest(req)
 	if err != nil {
 		return err
 	}
@@ -297,80 +271,44 @@ func (r *Route) HydrationIntrospect(req *http.Request) error {
 }
 
 // refresh incremets refresh count and checks that we not reached the limit
-func (r *Route) refresh(rrdata *models.RRData, hk string) {
+func (r *Route) refresh(data *models.RequestResponseData, hk string) {
 	// Check that we have refresh limit by request count
-	if rrdata.Refresh.MaxCount == 0 {
+	if r.Parameters.Refresh.Count == 0 {
 		return
 	}
 
-	r.log.Debug().Msgf("refresh cache, key %s, maxCount %d, current count %d", hk, rrdata.Refresh.MaxCount, rrdata.Refresh.Counter)
+	r.log.Debug().Msgf("refresh cache, key %s, maxCount %d, current count %d", hk, r.Parameters.Refresh.Count, data.Response.Refresh.Current())
 
-	rrdata.MuLock()
-	defer rrdata.MuUnlock()
-
-	if err := rrdata.LoadRefreshCounter(hk, r.Cache.External); err != nil {
-		r.log.Err(err).Msg("failed to get refresh-counter from external cache")
-	}
-
-	rrdata.Refresh.Counter++
-
-	if rrdata.Refresh.Counter < rrdata.Refresh.MaxCount {
-		if err := rrdata.UpdateRefreshCounter(hk, r.Cache.External); err != nil {
-			r.log.Err(err).Msg("failed to update refresh counter")
-		}
+	if incResult, err := data.Response.Refresh.Inc(); err != nil {
+		r.log.Error().Err(err).Msg("failed to check refresh counter")
+		return
+	} else if *incResult < r.Parameters.Refresh.Count {
 		return
 	}
 
-	req, err := rrdata.Request.BuildRequest()
-	if err != nil {
-		r.log.Err(err).Msg("failed to build request")
-		return
+	if err := r.refreshHandler(hk, data); err != nil {
+		r.log.Error().Err(err).Msgf("%s: refresh cache failed", hk)
 	}
-
-	if err = r.HydrationIntrospect(req); err != nil {
-		r.log.Err(err).Msg("introspection failed")
-		if err = r.Cache.Delete(hk); err != nil {
-			r.log.Err(err).Msg("delete key failed")
-		}
-		return
-	}
-
-	client := r.Pool.GetFromPool()
-	defer r.Pool.PutToPool(client)
-	if err := rrdata.UpdateByRequest(client, req); err != nil {
-		r.log.Err(err).Msg("failed to update RRdata")
-		if err = r.Cache.Delete(hk); err != nil {
-			r.log.Err(err).Msg("delete key failed")
-		}
-		return
-	}
-
-	rrdata.Refresh.Counter = 0
-	if err := rrdata.UpdateRefreshCounter(hk, r.Cache.External); err != nil {
-		r.log.Err(err).Msg("failed to update refresh counter")
-	}
-
-	r.log.Debug().Msgf("cache refreshed")
 }
 
-func (r *Route) responseHandle(rrdata *models.RRData, w http.ResponseWriter, req *http.Request, hk string) {
-	// If get rrdata from redis, request will be empty
-	if rrdata.Request == nil {
-		rrdata.Request = &models.Request{}
-		if err := rrdata.Request.Read(req); err != nil {
+func (r *Route) responseHandle(data *models.RequestResponseData, w http.ResponseWriter, req *http.Request, hk string) {
+	// If data was get from redis, the request will be empty
+	if data.Request == nil {
+		var err error
+		if data.Request, err = models.NewRequest(req); err != nil {
 			r.log.Err(err).Msg("failed to read data from request")
 		}
 	}
 
-	if err := rrdata.Response.Write(w); err != nil {
+	if err := data.Response.Write(w); err != nil {
 		r.log.Err(err).Msg("failed to write data from cache")
 	}
 
-	if err := r.Publish(rrdata.Request); err != nil {
+	if err := r.Publish(data.Request); err != nil {
 		r.log.Err(err).Msg("failed to publish data")
 	}
 
-	go r.refresh(rrdata, hk)
+	go r.refresh(data, hk)
 }
 
 func (r *Route) waitAnswer(w http.ResponseWriter, req *http.Request, hk string, ch chan struct{}) {
@@ -398,34 +336,34 @@ func (r *Route) CachedHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	// Check that we not started to handle the request
-	if waitCh, ok := r.WaitAnswerList[hk]; !ok {
+	if waitCh, ok := r.waitAnswerList[hk]; !ok {
 		// If we not started to handle the request we need to add lock-channel to map
 		var (
 			mu *sync.Mutex
 			ok bool
 		)
 		// Create mutex for same requests
-		if mu, ok = r.WaiteAnswerMu[hk]; !ok {
+		if mu, ok = r.waiteAnswerMu[hk]; !ok {
 			mu = &sync.Mutex{}
-			r.WaiteAnswerMu[hk] = mu
+			r.waiteAnswerMu[hk] = mu
 		}
 		mu.Lock()
-		if waitCh1, ok1 := r.WaitAnswerList[hk]; !ok1 {
+		if waitCh1, ok1 := r.waitAnswerList[hk]; !ok1 {
 			ch := make(chan struct{})
-			r.WaitAnswerList[hk] = ch
+			r.waitAnswerList[hk] = ch
 			mu.Unlock() // unlock mutex fast as possible
 
 			// Proxy request to backend
-			rrData := r.RequestToBack(w, req)
+			rrData := r.requestToBack(hk, w, req)
 			// Save answer to mem cache
 			if err := r.Cache.Add(hk, rrData); err != nil {
 				r.log.Err(err).Msg("failed to save data to cache")
 			}
 
 			close(ch)
-			delete(r.WaitAnswerList, hk)
+			delete(r.waitAnswerList, hk)
 			// Delete removes only item from map, GC remove mutex after removed all references to it.
-			delete(r.WaiteAnswerMu, hk)
+			delete(r.waiteAnswerMu, hk)
 		} else {
 			mu.Unlock()
 			r.waitAnswer(w, req, hk, waitCh1)

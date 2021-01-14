@@ -83,10 +83,6 @@ func (p *HTTPProxy) fillRoutes(rc routes.MapConfig, r routes.MapRoutes, parentPa
 			return err
 		}
 
-		if err := route.Initilize(); err != nil {
-			return err
-		}
-
 		if err := p.fillExcludedRoutes(rc[configKey], parentRoute+"/"+k, params); err != nil {
 			return err
 		}
@@ -94,6 +90,8 @@ func (p *HTTPProxy) fillRoutes(rc routes.MapConfig, r routes.MapRoutes, parentPa
 		if err := p.fillRoutes(rc[configKey].Routes, route.Routes, params, parentRoute+"/"+k); err != nil {
 			return err
 		}
+
+		route.Initilize()
 	}
 
 	return nil
@@ -110,9 +108,7 @@ func (p *HTTPProxy) fillExcludedRoutes(rc *routes.Config, parentRoute string, pa
 			return err
 		}
 
-		if err := route.Initilize(); err != nil {
-			return err
-		}
+		route.Initilize()
 	}
 	return nil
 }
@@ -121,7 +117,7 @@ func (p *HTTPProxy) proxyHandler(w http.ResponseWriter, r *http.Request) {
 	route := p.routes.FindRouteByHTTPRequest(r)
 
 	// Handle excluded routes
-	if route.Excluded {
+	if route.IsExcluded() {
 		route.NotCached(w, r)
 		return
 	}

@@ -165,6 +165,49 @@ func (r *RedisClient) JSONDelete(key, path string) error {
 	return nil
 }
 
+func (r *RedisClient) JSONNumIncrBy(key, path string, num int) error {
+	_, err := r.JsonNumIncrBy(key, path, num).Result()
+	if err != nil {
+		return err
+	}
+
+	r.log.Debug().Msgf("JsonNumIncrBy key %s, path %s, num %d in cache", key, path, num)
+
+	return nil
+}
+
+func (r *RedisClient) LimitTTL(key string, ttl time.Duration) error {
+	_, err := r.Eval(r.ctx,
+		`local current
+	current = redis.call("incr",KEYS[1])
+	if tonumber(current) == 1 then
+		redis.call("expire",KEYS[1],ARGV[1])
+	end`, []string{key}, ttl).Result()
+	if err != nil {
+		return err
+	}
+
+	r.log.Debug().Msgf("limit key %s in cache", key)
+
+	return nil
+}
+
+func (r *RedisClient) LimitCount(key string, num int) error {
+	_, err := r.Eval(r.ctx,
+		`local current
+	current = redis.call("incr",KEYS[1])
+	if tonumber(current) == 1 then
+		redis.call("set",KEYS[1],ARGV[1])
+	end`, []string{key}, num).Result()
+	if err != nil {
+		return err
+	}
+
+	r.log.Debug().Msgf("limit key %s in cache", key)
+
+	return nil
+}
+
 // GetMetrics return map of the metrics from cache connection
 func (r *RedisClient) GetMetrics() metrics.MapMetricsOptions {
 	_ = r.Service.GetMetrics()

@@ -23,12 +23,10 @@ type CacheConfig struct {
 	TTLErr time.Duration
 }
 
-func (cc *CacheConfig) Initilize() error {
+func (cc *CacheConfig) Validate() {
 	if cc.TTL == 0 {
 		cc.TTL = defaultTTL
 	}
-
-	return nil
 }
 
 func (cc *CacheConfig) Merge(target *CacheConfig) *CacheConfig {
@@ -60,7 +58,9 @@ type Cache struct {
 	sync.Map
 }
 
-func NewCache(ctx context.Context, cfg *CacheConfig) (*Cache, error) {
+func NewCache(ctx context.Context, cfg *CacheConfig) *Cache {
+	cfg.Validate()
+
 	c := &Cache{
 		ctx: ctx,
 		cfg: cfg,
@@ -77,7 +77,7 @@ func NewCache(ctx context.Context, cfg *CacheConfig) (*Cache, error) {
 		c.clearErrTimer = time.AfterFunc(c.cfg.TTLErr, c.ClearErrCache)
 	}
 
-	return c, nil
+	return c
 }
 
 func (c *Cache) Add(key string, data interface{}) error {

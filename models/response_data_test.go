@@ -9,7 +9,7 @@ import (
 )
 
 func TestResponseMarshalBinary(t *testing.T) {
-	resp := &Response{
+	resp := &ResponseData{
 		Body:       "hello",
 		Header:     make(http.Header),
 		StatusCode: http.StatusOK,
@@ -25,7 +25,7 @@ func TestResponseMarshalBinary(t *testing.T) {
 }
 
 func TestResponseUnmarshalBinary(t *testing.T) {
-	resp := &Response{
+	resp := &ResponseData{
 		Body:       "hello",
 		Header:     make(http.Header),
 		StatusCode: http.StatusOK,
@@ -36,7 +36,7 @@ func TestResponseUnmarshalBinary(t *testing.T) {
 	binData, err := resp.MarshalBinary()
 	require.Equal(t, nil, err)
 
-	resp = &Response{}
+	resp = &ResponseData{}
 	err = resp.UnmarshalBinary(binData)
 	require.Equal(t, nil, err)
 

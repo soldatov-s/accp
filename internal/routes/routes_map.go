@@ -81,6 +81,6 @@ func (m MapRoutes) AddExludedRouteByPath(ctx context.Context, path, routeName st
 		return nil, err
 	}
 
-	route.Excluded = true
+	route.excluded = true
 	return route, nil
 }
