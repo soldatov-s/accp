@@ -45,6 +45,7 @@ func initRouteParameters(t *testing.T) *Parameters {
 	return parameters
 }
 
+// nolint : unused
 func initRoute(t *testing.T) *Route {
 	ctx := context.Background()
 	params := initRouteParameters(t)

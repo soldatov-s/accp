@@ -31,11 +31,11 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-func (pc *Config) Merge(target *Config) *Config {
+func (c *Config) Merge(target *Config) *Config {
 	result := &Config{
-		DSN:           pc.DSN,
-		BackoffPolicy: pc.BackoffPolicy,
-		ExchangeName:  pc.ExchangeName,
+		DSN:           c.DSN,
+		BackoffPolicy: c.BackoffPolicy,
+		ExchangeName:  c.ExchangeName,
 	}
 
 	if target.DSN != "" {

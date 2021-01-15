@@ -20,6 +20,6 @@ func Registrate(ctx context.Context, cfg *Config) (context.Context, error) {
 	return ctx, nil
 }
 
-func Get(ctx context.Context) *RedisClient {
-	return accp.GetByName(ctx, ProviderName).(*RedisClient)
+func Get(ctx context.Context) *Client {
+	return accp.GetByName(ctx, ProviderName).(*Client)
 }

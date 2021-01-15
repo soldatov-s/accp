@@ -99,7 +99,7 @@ func StartStatistics(ctx context.Context) error {
 	}
 
 	// Collecting all metrics from context
-	metrics, err := getAllMetrics(ctx)
+	m, err := getAllMetrics(ctx)
 	if err != nil {
 		return err
 	}
@@ -116,7 +116,7 @@ func StartStatistics(ctx context.Context) error {
 		return err
 	}
 
-	return a.Start(metrics, aliveHandlers, readyHandlers)
+	return a.Start(m, aliveHandlers, readyHandlers)
 }
 
 func providersOrder() []string {

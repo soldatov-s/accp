@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	AppItem accp.AccpItem = "app"
+	AppItem accp.Item = "app"
 )
 
 func Registrate(ctx context.Context) (context.Context, *ApplicationInfo) {

@@ -27,7 +27,7 @@ type IMutex interface {
 
 // Mutex provides a distributed mutex across multiple instances via Redis
 type Mutex struct {
-	conn          *RedisClient
+	conn          *Client
 	lockKey       string
 	lockValue     string
 	checkInterval time.Duration
@@ -38,12 +38,12 @@ type Mutex struct {
 }
 
 // NewMutex creates new distributed redis mutex
-func (r *RedisClient) NewMutex(conn *RedisClient, expire, checkInterval time.Duration) IMutex {
+func (r *Client) NewMutex(conn *Client, expire, checkInterval time.Duration) IMutex {
 	return r.NewMutexByID(defaultLockID, expire, checkInterval)
 }
 
 // NewMutexByID creates new distributed redis mutex by ID
-func (r *RedisClient) NewMutexByID(id string, expire, checkInterval time.Duration) IMutex {
+func (r *Client) NewMutexByID(id string, expire, checkInterval time.Duration) IMutex {
 	checkIntervalValue := checkInterval
 	if checkIntervalValue == 0 {
 		checkIntervalValue = defaultCheckInterval
@@ -91,7 +91,7 @@ func (redisLock *Mutex) Extend(timeout time.Duration) (err error) {
 }
 
 // checkDBConn check that connection not nil and active
-func (redisLock *Mutex) checkDBConn() (conn *RedisClient, err error) {
+func (redisLock *Mutex) checkDBConn() (conn *Client, err error) {
 	conn = redisLock.conn
 
 	if conn == nil {

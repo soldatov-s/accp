@@ -82,7 +82,7 @@ func (cl *redisProcessor) JSONDEL(key, path string) *redis.IntCmd {
 	return jsonDelExecute(cl, key, path)
 }
 
-func (cl *redisProcessor) JsonNumIncrBy(key, path string, num int) *redis.StringCmd {
+func (cl *redisProcessor) JSONNUMINCRBy(key, path string, num int) *redis.StringCmd {
 	return jsonNumIncrByExecute(cl, key, path, num)
 }
 

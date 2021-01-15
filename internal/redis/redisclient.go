@@ -16,7 +16,7 @@ import (
 
 type empty struct{}
 
-type RedisClient struct {
+type Client struct {
 	*rejson.Client
 	ctx context.Context
 	log zerolog.Logger
@@ -26,7 +26,7 @@ type RedisClient struct {
 	metrics.Service
 }
 
-func NewRedisClient(ctx context.Context, cfg *Config) (*RedisClient, error) {
+func NewRedisClient(ctx context.Context, cfg *Config) (*Client, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -42,7 +42,7 @@ func NewRedisClient(ctx context.Context, cfg *Config) (*RedisClient, error) {
 	connOptions.MinIdleConns = cfg.MinIdleConnections
 	connOptions.PoolSize = cfg.MaxOpenedConnections
 
-	r := &RedisClient{
+	r := &Client{
 		ctx: ctx,
 		cfg: cfg,
 		log: logger.GetPackageLogger(ctx, empty{}),
@@ -59,7 +59,7 @@ func NewRedisClient(ctx context.Context, cfg *Config) (*RedisClient, error) {
 	return r, nil
 }
 
-func (r *RedisClient) Add(key string, value interface{}, ttl time.Duration) error {
+func (r *Client) Add(key string, value interface{}, ttl time.Duration) error {
 	err := r.JSONSetWithExpire(key, ".", value, ttl)
 	if err != nil {
 		return err
@@ -70,7 +70,7 @@ func (r *RedisClient) Add(key string, value interface{}, ttl time.Duration) erro
 	return nil
 }
 
-func (r *RedisClient) Select(key string, value interface{}) error {
+func (r *Client) Select(key string, value interface{}) error {
 	cmdString := r.Get(r.ctx, key)
 	_, err := cmdString.Result()
 
@@ -88,7 +88,7 @@ func (r *RedisClient) Select(key string, value interface{}) error {
 	return nil
 }
 
-func (r *RedisClient) Expire(key string, ttl time.Duration) error {
+func (r *Client) Expire(key string, ttl time.Duration) error {
 	cmdBool := r.Client.Expire(r.ctx, key, ttl)
 	_, err := cmdBool.Result()
 	if err != nil {
@@ -100,7 +100,7 @@ func (r *RedisClient) Expire(key string, ttl time.Duration) error {
 	return nil
 }
 
-func (r *RedisClient) Update(key string, value interface{}, ttl time.Duration) error {
+func (r *Client) Update(key string, value interface{}, ttl time.Duration) error {
 	_, err := r.Set(r.ctx, key, value, ttl).Result()
 	if err != nil {
 		return err
@@ -112,7 +112,7 @@ func (r *RedisClient) Update(key string, value interface{}, ttl time.Duration) e
 }
 
 // JSONGet item from cache by key.
-func (r *RedisClient) JSONGet(key, path string, value interface{}) error {
+func (r *Client) JSONGet(key, path string, value interface{}) error {
 	cmdString := r.JSONGET(key, path)
 	_, err := cmdString.Result()
 
@@ -131,7 +131,7 @@ func (r *RedisClient) JSONGet(key, path string, value interface{}) error {
 }
 
 // JSONSet item in cache by key.
-func (r *RedisClient) JSONSet(key, path, json string) error {
+func (r *Client) JSONSet(key, path, json string) error {
 	_, err := r.JSONSET(key, path, json).Result()
 	if err != nil {
 		return err
@@ -143,7 +143,7 @@ func (r *RedisClient) JSONSet(key, path, json string) error {
 }
 
 // JSONSetNX item in cache by key.
-func (r *RedisClient) JSONSetNX(key, path, json string) error {
+func (r *Client) JSONSetNX(key, path, json string) error {
 	_, err := r.JSONSET(key, path, json, "NX").Result()
 	if err != nil {
 		return err
@@ -154,7 +154,7 @@ func (r *RedisClient) JSONSetNX(key, path, json string) error {
 	return nil
 }
 
-func (r *RedisClient) JSONDelete(key, path string) error {
+func (r *Client) JSONDelete(key, path string) error {
 	_, err := r.JSONDEL(key, path).Result()
 	if err != nil {
 		return err
@@ -165,8 +165,8 @@ func (r *RedisClient) JSONDelete(key, path string) error {
 	return nil
 }
 
-func (r *RedisClient) JSONNumIncrBy(key, path string, num int) error {
-	_, err := r.JsonNumIncrBy(key, path, num).Result()
+func (r *Client) JSONNumIncrBy(key, path string, num int) error {
+	_, err := r.JSONNUMINCRBy(key, path, num).Result()
 	if err != nil {
 		return err
 	}
@@ -176,7 +176,7 @@ func (r *RedisClient) JSONNumIncrBy(key, path string, num int) error {
 	return nil
 }
 
-func (r *RedisClient) LimitTTL(key string, ttl time.Duration) error {
+func (r *Client) LimitTTL(key string, ttl time.Duration) error {
 	_, err := r.Eval(r.ctx,
 		`local current
 	current = redis.call("incr",KEYS[1])
@@ -192,7 +192,7 @@ func (r *RedisClient) LimitTTL(key string, ttl time.Duration) error {
 	return nil
 }
 
-func (r *RedisClient) LimitCount(key string, num int) error {
+func (r *Client) LimitCount(key string, num int) error {
 	_, err := r.Eval(r.ctx,
 		`local current
 	current = redis.call("incr",KEYS[1])
@@ -209,7 +209,7 @@ func (r *RedisClient) LimitCount(key string, num int) error {
 }
 
 // GetMetrics return map of the metrics from cache connection
-func (r *RedisClient) GetMetrics() metrics.MapMetricsOptions {
+func (r *Client) GetMetrics() metrics.MapMetricsOptions {
 	_ = r.Service.GetMetrics()
 	r.Metrics[ProviderName+"_status"] = &metrics.MetricOptions{
 		Metric: prometheus.NewGauge(
@@ -229,7 +229,7 @@ func (r *RedisClient) GetMetrics() metrics.MapMetricsOptions {
 }
 
 // GetReadyHandlers return array of the readyHandlers from database connection
-func (r *RedisClient) GetReadyHandlers() metrics.MapCheckFunc {
+func (r *Client) GetReadyHandlers() metrics.MapCheckFunc {
 	_ = r.Service.GetReadyHandlers()
 	r.ReadyHandlers[strings.ToUpper(ProviderName+"_notfailed")] = func() (bool, string) {
 		if _, err := r.Ping(r.ctx).Result(); err != nil {

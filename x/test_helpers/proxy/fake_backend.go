@@ -33,10 +33,12 @@ func getRequest(_ *http.Request) (res []byte, err error) {
 	return data, nil
 }
 
+// nolint : unparam
 func postRequest(_ *http.Request) (res []byte, err error) {
 	return []byte(DefaultPostAnswer), nil
 }
 
+// nolint : unparam
 func putRequest(_ *http.Request) (res []byte, err error) {
 	return []byte(DefaultPutAnswer), nil
 }
@@ -50,6 +52,7 @@ func FakeBackendService(t *testing.T, host string) *httptest.Server {
 
 		switch r.Method {
 		case http.MethodGet:
+			// nolint : unused
 			switch r.URL.Path {
 			// case "/api/v1/users/search":
 			// 	fallthrough

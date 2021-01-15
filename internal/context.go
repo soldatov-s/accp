@@ -5,13 +5,13 @@ import (
 	"sync"
 )
 
-type AccpItem string
+type Item string
 
 const (
-	ProvidersItem AccpItem = "providers"
+	ProvidersItem Item = "providers"
 )
 
-type providers struct {
+type Providers struct {
 	sync.Map
 }
 
@@ -20,15 +20,15 @@ type IProvider interface {
 	Shutdown() error
 }
 
-func Create(ctx context.Context) (context.Context, *providers) {
-	p := &providers{}
+func Create(ctx context.Context) (context.Context, *Providers) {
+	p := &Providers{}
 	return context.WithValue(ctx, ProvidersItem, p), p
 }
 
-func Get(ctx context.Context) *providers {
+func Get(ctx context.Context) *Providers {
 	v := ctx.Value(ProvidersItem)
 	if v != nil {
-		return v.(*providers)
+		return v.(*Providers)
 	}
 	return nil
 }
@@ -36,7 +36,7 @@ func Get(ctx context.Context) *providers {
 func GetByName(ctx context.Context, name string) interface{} {
 	p := Get(ctx)
 	if p != nil {
-		v, _ := ctx.Value(ProvidersItem).(*providers).Load(name)
+		v, _ := ctx.Value(ProvidersItem).(*Providers).Load(name)
 		return v
 	}
 
