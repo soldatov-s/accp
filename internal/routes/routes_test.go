@@ -95,17 +95,17 @@ func TestRoute_CheckLimits(t *testing.T) {
 
 	res, err := route.CheckLimits(r)
 	require.Nil(t, err)
-	require.Equal(t, *res, true)
+	require.Equal(t, *res, false)
 
 	res, err = route.CheckLimits(r)
 	require.Nil(t, err)
-	require.Equal(t, *res, false)
+	require.Equal(t, *res, true)
 
 	time.Sleep(3 * time.Second)
 
 	res, err = route.CheckLimits(r)
 	require.Nil(t, err)
-	require.Equal(t, *res, true)
+	require.Equal(t, *res, false)
 }
 
 func TestIntrospection(t *testing.T) {

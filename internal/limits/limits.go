@@ -25,9 +25,9 @@ func NewLimit() *Limit {
 // e.g. we set limit for authorization tokens, we recive the multiple requsts with
 // different tokens. LimitTable will be contain each token and its current state of limit
 type LimitTable struct {
-	List map[string]*Limit
-	mu   sync.Mutex
-	PT   time.Duration
+	list     sync.Map
+	pt       time.Duration
+	maxCount int
 
 	clearTimer *time.Timer
 	cache      *external.Cache
@@ -38,47 +38,71 @@ func NewLimitTable(route string, c *Config, cache *external.Cache) *LimitTable {
 	c.Validate()
 
 	lt := &LimitTable{
-		PT:    c.PT,
-		cache: cache,
-		route: route,
-		List:  make(map[string]*Limit),
+		pt:       c.PT,
+		maxCount: c.Counter,
+		cache:    cache,
+		route:    route,
 	}
 
-	lt.clearTimer = time.AfterFunc(lt.PT, lt.clearTable)
+	lt.clearTimer = time.AfterFunc(lt.pt, lt.clearTable)
 	return lt
 }
 
-func (t *LimitTable) Inc(value string) error {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	v, ok := t.List[value]
-	if !ok {
-		l := NewLimit()
-		t.List[value] = l
+func (t *LimitTable) Check(value string, result *bool) error {
+	if err := t.Inc(value); err != nil {
+		return err
 	}
 
-	if t.cache != nil {
-		if err := t.cache.Select(t.route+"_"+value, &v.Counter); err != nil {
+	if v, ok := t.list.Load(value); ok {
+		if v.(*Limit).Counter >= t.maxCount {
+			*result = true
+		}
+	}
+
+	return nil
+}
+
+func (t *LimitTable) Inc(value string) error {
+	var isNew bool
+
+	v, ok := t.list.Load(value)
+	if !ok {
+		v = NewLimit()
+		t.list.Store(value, v)
+		isNew = true
+	}
+
+	if t.cache != nil && !isNew {
+		if err := t.cache.Select(t.route+"_"+value, &v.(*Limit).Counter); err != nil {
 			return err
 		}
 	}
 
-	v.Counter++
-	v.LastAccess = time.Now().Unix()
-	return t.cache.LimitTTL(t.route+"_"+value, t.PT)
+	if v.(*Limit).Counter >= t.maxCount {
+		return nil
+	}
+
+	v.(*Limit).Counter++
+	if t.cache != nil {
+		if err := t.cache.LimitTTL(t.route+"_"+value, t.pt); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (t *LimitTable) clearTable() {
 	timeNow := time.Now().UTC()
 
-	for k, v := range t.List {
-		if time.Unix(v.LastAccess, 0).UTC().Sub(timeNow) > t.PT {
-			delete(t.List, k)
+	t.list.Range(func(k, v interface{}) bool {
+		if time.Unix(v.(*Limit).LastAccess, 0).UTC().Sub(timeNow) > t.pt {
+			t.list.Delete(k)
 		}
-	}
+		return true
+	})
 
-	t.clearTimer.Reset(t.PT)
+	t.clearTimer.Reset(t.pt)
 }
 
 func NewLimits(route string, lc MapConfig, cache *external.Cache) map[string]*LimitTable {

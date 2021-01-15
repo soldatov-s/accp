@@ -136,7 +136,7 @@ func (p *HTTPProxy) proxyHandler(w http.ResponseWriter, r *http.Request) {
 	if res, err := route.CheckLimits(r); err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
-	} else if !*res {
+	} else if *res {
 		http.Error(w, "limit reached", http.StatusTooManyRequests)
 		return
 	}

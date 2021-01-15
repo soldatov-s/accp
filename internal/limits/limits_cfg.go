@@ -24,43 +24,12 @@ func (c *Config) Validate() {
 	}
 }
 
-type MapConfig map[string]*Config
-
-func NewMapConfig() MapConfig {
-	l := make(MapConfig)
-	l["token"] = &Config{
-		Header: []string{"Authorization"},
-	}
-	l["ip"] = &Config{
-		Header: []string{"X-Forwarded-For"},
-	}
-
-	return l
-}
-
-func (mc MapConfig) Merge(target MapConfig) MapConfig {
-	result := make(MapConfig)
-	for k, v := range mc {
-		result[k] = v
-	}
-
-	for k, v := range target {
-		if limit, ok := result[k]; !ok {
-			result[k] = v
-		} else {
-			result[k] = limit.Merge(v)
-		}
-	}
-
-	return result
-}
-
-func (lc *Config) Merge(target *Config) *Config {
+func (c *Config) Merge(target *Config) *Config {
 	result := &Config{
-		Header:  lc.Header,
-		Cookie:  lc.Cookie,
-		Counter: lc.Counter,
-		PT:      lc.PT,
+		Header:  c.Header,
+		Cookie:  c.Cookie,
+		Counter: c.Counter,
+		PT:      c.PT,
 	}
 
 	if target == nil {
@@ -81,6 +50,37 @@ func (lc *Config) Merge(target *Config) *Config {
 
 	if target.PT > 0 {
 		result.PT = target.PT
+	}
+
+	return result
+}
+
+type MapConfig map[string]*Config
+
+func NewMapConfig() MapConfig {
+	l := make(MapConfig)
+	l["token"] = &Config{
+		Header: []string{"Authorization"},
+	}
+	l["ip"] = &Config{
+		Header: []string{"X-Forwarded-For"},
+	}
+
+	return l
+}
+
+func (c MapConfig) Merge(target MapConfig) MapConfig {
+	result := make(MapConfig)
+	for k, v := range c {
+		result[k] = v
+	}
+
+	for k, v := range target {
+		if limit, ok := result[k]; !ok {
+			result[k] = v
+		} else {
+			result[k] = limit.Merge(v)
+		}
 	}
 
 	return result

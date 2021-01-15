@@ -19,29 +19,39 @@ func NewRefreshData(hk string, maxCount int, cache *external.Cache) *RefreshData
 	}
 }
 
-func (r *RefreshData) Inc() (*int, error) {
+func (r *RefreshData) Inc() error {
 	if r.maxCount == 0 {
-		return &r.counter, nil
+		return nil
 	}
 
-	if r.cache != nil {
+	var isNew bool
+
+	if r.counter == 0 {
+		isNew = true
+	}
+
+	if r.cache != nil && !isNew {
 		if err := r.cache.Select("refreh_"+r.hk, &r.counter); err != nil {
-			return nil, err
+			return err
 		}
 	}
 
 	r.counter++
 	if r.cache != nil {
-		return &r.counter, r.cache.LimitCount("refreh_"+r.hk, r.maxCount)
+		return r.cache.LimitCount("refreh_"+r.hk, r.maxCount)
 	}
 
 	if r.counter > r.maxCount {
 		r.counter = 0
 	}
 
-	return &r.counter, nil
+	return nil
 }
 
 func (r *RefreshData) Current() int {
 	return r.counter
+}
+
+func (r *RefreshData) Check() bool {
+	return r.counter < r.maxCount
 }

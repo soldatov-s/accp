@@ -75,31 +75,6 @@ func (r *Route) IsExcluded() bool {
 	return r.excluded
 }
 
-// checkLimit checks limit
-func (r *Route) checkLimit(limitName, limitValue string, result *bool) error {
-	var (
-		vv *limits.Limit
-		ok bool
-	)
-	if vv, ok = (r.Limits[limitName]).List[limitValue]; !ok {
-		if err := (r.Limits[limitName]).Inc(limitValue); err != nil {
-			return err
-		}
-		return nil
-	}
-
-	if err := (r.Limits[limitName]).Inc(limitValue); err != nil {
-		return err
-	}
-
-	if vv.Counter >= r.Parameters.Limits[limitName].Counter {
-		*result = *result && false
-		r.log.Debug().Msgf("limit reached: %s", limitName)
-	}
-
-	return nil
-}
-
 func (r *Route) CheckLimits(req *http.Request) (*bool, error) {
 	result := true
 
@@ -113,9 +88,10 @@ func (r *Route) CheckLimits(req *http.Request) (*bool, error) {
 	}
 
 	for k, v := range limitList {
-		if err := r.checkLimit(k, v, &result); err != nil {
+		if err := r.Limits[k].Check(v, &result); err != nil {
 			return nil, err
-		} else if !result {
+		} else if result {
+			r.log.Debug().Msgf("limit reached: %s:%s", k, v)
 			break
 		}
 	}
@@ -279,10 +255,10 @@ func (r *Route) refresh(data *rrdata.RequestResponseData, hk string) {
 
 	r.log.Debug().Msgf("refresh cache, key %s, maxCount %d, current count %d", hk, r.Parameters.Refresh.Count, data.Response.Refresh.Current())
 
-	if incResult, err := data.Response.Refresh.Inc(); err != nil {
-		r.log.Error().Err(err).Msg("failed to check refresh counter")
+	if err := data.Response.Refresh.Inc(); err != nil {
+		r.log.Error().Err(err).Msg("failed to inc refresh counter")
 		return
-	} else if *incResult < r.Parameters.Refresh.Count {
+	} else if data.Response.Refresh.Check() {
 		return
 	}
 
