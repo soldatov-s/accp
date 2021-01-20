@@ -20,6 +20,7 @@ import (
 	"github.com/soldatov-s/accp/internal/logger"
 	"github.com/soldatov-s/accp/internal/publisher"
 	"github.com/soldatov-s/accp/internal/rabbitmq"
+	"github.com/soldatov-s/accp/internal/redis"
 	rrdata "github.com/soldatov-s/accp/internal/request_response_data"
 )
 
@@ -63,7 +64,7 @@ func (r *Route) Initilize() {
 		return
 	}
 
-	r.Cache = cache.NewCache(r.ctx, r.Parameters.Cache)
+	r.Cache = cache.NewCache(r.ctx, r.Parameters.Cache, redis.Get(r.ctx))
 	r.Limits = limits.NewLimits(r.route, r.Parameters.Limits, r.Cache.External)
 
 	if r.Parameters.Refresh.Time > 0 {
@@ -139,7 +140,7 @@ func (r *Route) refreshHandler(hk string, data *rrdata.RequestResponseData) erro
 }
 
 func (r *Route) refreshByTime() {
-	r.Cache.Mem.Range(func(k, v interface{}) bool {
+	r.Cache.Memory.Range(func(k, v interface{}) bool {
 		data := v.(*cachedata.CacheItem).Data.(*rrdata.RequestResponseData)
 		hk := k.(string)
 		go func() {
@@ -271,7 +272,7 @@ func (r *Route) responseHandle(data *rrdata.RequestResponseData, w http.Response
 	// If data was get from redis, the request will be empty
 	if data.Request == nil {
 		var err error
-		if data.Request, err = rrdata.NewRequest(req); err != nil {
+		if data.Request, err = rrdata.NewRequestData(req); err != nil {
 			r.log.Err(err).Msg("failed to read data from request")
 		}
 	}

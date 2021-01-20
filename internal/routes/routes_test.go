@@ -20,7 +20,7 @@ func initRouteParameters(t *testing.T) *Parameters {
 	parameters := &Parameters{
 		DSN: "http://localhost:9090",
 		Cache: &cache.Config{
-			Memory: &memory.CacheConfig{
+			Memory: &memory.Config{
 				TTL:    2 * time.Second,
 				TTLErr: 1 * time.Second,
 			},

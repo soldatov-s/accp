@@ -32,9 +32,6 @@ func (h TracingHook) Run(e *zerolog.Event, level zerolog.Level, msg string) {
 		)
 	} else {
 		frame := runtime.FuncForPC(pc)
-		// Example caller names:
-		// gitlab.wasd.tv/go-work/httpserver-provider-echo.(*Server).Start
-		// gitlab.wasd.tv/wasd-team/wasd-chat-info/domains/users/v1.Initialize
 		callerName := frame.Name()
 
 		// Get caller's package name.

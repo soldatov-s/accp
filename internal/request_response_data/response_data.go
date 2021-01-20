@@ -1,4 +1,4 @@
-package models
+package rrdata
 
 import (
 	"encoding/json"
@@ -16,15 +16,15 @@ import (
 
 type ResponseData struct {
 	readMu     sync.RWMutex
-	Body       string
-	Header     http.Header
-	StatusCode int
-	TimeStamp  int64
-	UUID       uuid.UUID
-	Refresh    *RefreshData
+	Body       string       `json:"body"`
+	Header     http.Header  `json:"header"`
+	StatusCode int          `json:"status_code"`
+	TimeStamp  int64        `json:"time_stamp"`
+	UUID       uuid.UUID    `json:"uuid"`
+	Refresh    *RefreshData `json:"-"`
 }
 
-func NewResponse(hk string, maxCount int, cache *external.Cache) *ResponseData {
+func NewResponseData(hk string, maxCount int, cache *external.Cache) *ResponseData {
 	return &ResponseData{
 		Refresh: NewRefreshData(hk, maxCount, cache),
 	}

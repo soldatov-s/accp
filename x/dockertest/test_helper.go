@@ -3,16 +3,17 @@ package dockertest
 import (
 	"fmt"
 	"os"
+	"sync"
 
 	"github.com/ory/dockertest/v3"
 	"github.com/pkg/errors"
 )
 
 // nolint : gochecknoglobals
-var resources = []*dockertest.Resource{}
-
-// nolint : gochecknoglobals
-var pool *dockertest.Pool
+var (
+	resources sync.Map
+	pool      *dockertest.Pool
+)
 
 // KillAllDockers deletes all test dockers.
 func KillAllDockers() {
@@ -21,11 +22,13 @@ func KillAllDockers() {
 		panic(err)
 	}
 
-	for _, r := range resources {
-		if err := pool.Purge(r); err != nil {
+	resources.Range(func(k, v interface{}) bool {
+		if err := pool.Purge(v.(*dockertest.Resource)); err != nil {
 			panic(err)
 		}
-	}
+		resources.Delete(k)
+		return true
+	})
 }
 
 func startRedis() (*dockertest.Resource, error) {
@@ -36,7 +39,7 @@ func startRedis() (*dockertest.Resource, error) {
 
 	resource, err := pool.Run("redislabs/rejson", "1.0.6", []string{"ALLOW_EMPTY_PASSWORD=yes"})
 	if err == nil {
-		resources = append(resources, resource)
+		resources.Store(resource.Container.ID, resource)
 	}
 	return resource, err
 }
@@ -73,7 +76,7 @@ func startRabbitMQ() (*dockertest.Resource, error) {
 
 	resource, err := pool.Run("rabbitmq", "3.8.5-management-alpine", nil)
 	if err == nil {
-		resources = append(resources, resource)
+		resources.Store(resource.Container.ID, resource)
 	}
 	return resource, err
 }

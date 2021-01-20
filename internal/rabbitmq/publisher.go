@@ -29,6 +29,8 @@ type Publish struct {
 }
 
 func NewPublisher(ctx context.Context, cfg *Config) (*Publish, error) {
+	cfg.SetDefault()
+
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -39,15 +41,19 @@ func NewPublisher(ctx context.Context, cfg *Config) (*Publish, error) {
 		log: logger.GetPackageLogger(ctx, empty{}),
 	}
 
+	return p, nil
+}
+
+func (p *Publish) Start() error {
 	if err := p.connectPublisher(); err != nil {
-		return nil, err
+		return err
 	}
 
 	go p.publishStatus()
 
-	p.log.Info().Msg("Publisher connection established")
+	p.log.Info().Msg("publisher connection established")
 
-	return p, nil
+	return nil
 }
 
 func (p *Publish) connectPublisher() error {
@@ -76,10 +82,10 @@ func (p *Publish) publishStatus() {
 				break
 			}
 
-			p.log.Error().Msgf("RabbitMQ channel unexpected closed %s", reason)
+			p.log.Error().Msgf("rabbitmq channel unexpected closed %s", reason)
 			err := p.connectPublisher()
 			if err != nil {
-				p.log.Error().Msgf("Can't reconnect to rabbit %s", err)
+				p.log.Error().Msgf("can't reconnect to rabbit %s", err)
 				time.Sleep(10 * time.Second)
 				continue
 			}
@@ -94,15 +100,15 @@ func (p *Publish) Shutdown() error {
 
 	p.weAreShuttingDown = true
 
-	p.log.Info().Msg("Closing queue publisher connection...")
+	p.log.Info().Msg("closing queue publisher connection...")
 
 	err := p.Channel.Close()
 	if err != nil {
-		p.log.Error().Err(err).Msg("Failed to close queue channel")
+		p.log.Error().Err(err).Msg("failed to close queue channel")
 	}
 	err = p.Conn.Close()
 	if err != nil {
-		p.log.Error().Err(err).Msg("Failed to close queue connection")
+		p.log.Error().Err(err).Msg("failed to close queue connection")
 	}
 
 	p.Channel = nil
@@ -126,7 +132,7 @@ func (p *Publish) SendMessage(message interface{}, routingKey string) error {
 		for _, i := range p.cfg.BackoffPolicy {
 			connErr := p.connectPublisher()
 			if connErr != nil {
-				p.log.Error().Msgf("Error: %s. Trying to reconnect to rabbitMQ", connErr)
+				p.log.Error().Msgf("error: %s, trying to reconnect to rabbitMQ", connErr)
 				time.Sleep(i * time.Second)
 				continue
 			}
@@ -136,7 +142,7 @@ func (p *Publish) SendMessage(message interface{}, routingKey string) error {
 		pubErr := p.Channel.Publish(p.cfg.ExchangeName, routingKey, false,
 			false, amqp.Publishing{ContentType: "text/plain", Body: body})
 		if pubErr != nil {
-			p.log.Error().Msgf("Failed to publish a message %s", pubErr)
+			p.log.Error().Msgf("failed to publish a message %s", pubErr)
 			return pubErr
 		}
 	}
@@ -147,7 +153,7 @@ func (p *Publish) SendMessage(message interface{}, routingKey string) error {
 func (p *Publish) Ping() (err error) {
 	client, err := amqp.Dial(p.cfg.DSN)
 	if err != nil {
-		p.log.Error().Msgf("Can't rabbit to rabbitMQ %s, error %s", p.cfg.DSN, err)
+		p.log.Error().Msgf("can't rabbit to rabbitMQ %s, error %s", p.cfg.DSN, err)
 		return
 	}
 

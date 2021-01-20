@@ -34,9 +34,7 @@ func (rp *Parameters) Initilize() error {
 		rp.Cache = &cache.Config{}
 	}
 
-	if err := rp.Cache.Initilize(); err != nil {
-		return err
-	}
+	rp.Cache.SetDefault()
 
 	if rp.Refresh == nil {
 		rp.Refresh = &refresh.Config{}

@@ -6,13 +6,13 @@ import (
 )
 
 type Pool struct {
-	ch           chan *Client
+	ch           chan *http.Client
 	netTransport *http.Transport
 }
 
 func NewPool(poolCfg *Config) *Pool {
 	p := &Pool{}
-	p.ch = make(chan *Client, poolCfg.Size)
+	p.ch = make(chan *http.Client, poolCfg.Size)
 
 	clientTimeout := defaultClientTimeout
 	if poolCfg.Timeout > 0 {
@@ -39,11 +39,11 @@ func NewPool(poolCfg *Config) *Pool {
 	return p
 }
 
-func (p *Pool) GetFromPool() *Client {
+func (p *Pool) GetFromPool() *http.Client {
 	return <-p.ch
 }
 
-func (p *Pool) PutToPool(client *Client) {
+func (p *Pool) PutToPool(client *http.Client) {
 	go func() {
 		p.ch <- client
 	}()

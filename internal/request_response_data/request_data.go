@@ -1,10 +1,10 @@
-package models
+package rrdata
 
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"sync"
 
@@ -21,7 +21,7 @@ type RequestData struct {
 	mu     sync.RWMutex
 }
 
-func NewRequest(req *http.Request) (*RequestData, error) {
+func NewRequestData(req *http.Request) (*RequestData, error) {
 	r := &RequestData{}
 	if err := r.Read(req); err != nil {
 		return nil, err
@@ -52,6 +52,7 @@ func (r *RequestData) Read(req *http.Request) error {
 		}
 	}
 
+	req.Body = ioutil.NopCloser(bytes.NewReader(buf.Bytes()))
 	r.Body = buf.String()
 	r.Header = make(http.Header)
 	httputils.CopyHeader(r.Header, req.Header)
@@ -63,11 +64,17 @@ func (r *RequestData) Read(req *http.Request) error {
 
 func (r *RequestData) BuildRequest() (*http.Request, error) {
 	if r == nil {
-		return nil, errors.New("empty request")
+		return nil, ErrEmptyRequest
 	}
 
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	return http.NewRequest(r.Method, r.URL, bytes.NewBufferString(r.Body))
+	req, err := http.NewRequest(r.Method, r.URL, bytes.NewBufferString(r.Body))
+	if err != nil {
+		return nil, err
+	}
+
+	httputils.CopyHeader(req.Header, r.Header)
+	return req, nil
 }

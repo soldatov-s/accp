@@ -6,31 +6,50 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/soldatov-s/accp/internal/httputils"
+	"github.com/stretchr/testify/require"
 )
 
 const (
-	DefaultFakeSericeHost = "localhost:10000"
-	DefaultGetAnswer      = `{"result":{ "answer" : "it's a get request"}}`
-	DefaultPostAnswer     = `{"result":{ "answer" : "it's a post request"}}`
-	DefaultPutAnswer      = `{"result":{ "answer" : "it's a put request"}}`
+	GetEndpoint            = "/api/v1/check_get"
+	PostEndpoint           = "/api/v1/check_post"
+	PutEndpoint            = "/api/v1/check_put"
+	DefaultFakeServiceHost = "localhost:10000"
+	DefaultFakeServiceURL  = "http://" + DefaultFakeServiceHost
+	DefaultGetAnswer       = "it's a get request"
+	DefaultPostAnswer      = "it's a post request"
+	DefaultPutAnswer       = "it's a put request"
 )
 
 type HTTPBody struct {
 	Result struct {
-		Answer    string
-		TimeStamp time.Time
+		Message   string    `json:"message"`
+		TimeStamp time.Time `json:"timestamp"`
 	} `json:"result"`
 }
 
-func getRequest(_ *http.Request) (res []byte, err error) {
-	answer := HTTPBody{}
-	answer.Result.Answer = "it's a get request"
+func NewResponse(msg string) *HTTPBody {
+	answer := &HTTPBody{}
+	answer.Result.Message = msg
 	answer.Result.TimeStamp = time.Now()
-	data, err := json.Marshal(&answer)
-	if err != nil {
-		return nil, err
-	}
-	return data, nil
+	return answer
+}
+
+func DefaultHeader() http.Header {
+	h := make(http.Header)
+	h.Add("Content-Type", "application/json")
+	return h
+}
+
+func getRequest(t *testing.T, w http.ResponseWriter, _ *http.Request) {
+	respData := NewResponse("it's a get request")
+	data, err := json.Marshal(&respData)
+	require.Nil(t, err)
+
+	httputils.CopyHeader(w.Header(), DefaultHeader())
+	_, err = w.Write(data)
+	require.Nil(t, err)
 }
 
 // nolint : unparam
@@ -45,33 +64,15 @@ func putRequest(_ *http.Request) (res []byte, err error) {
 
 func FakeBackendService(t *testing.T, host string) *httptest.Server {
 	handler := func(w http.ResponseWriter, r *http.Request) {
-		var (
-			err error
-			res []byte
-		)
-
 		switch r.Method {
 		case http.MethodGet:
-			// nolint : unused
 			switch r.URL.Path {
-			// case "/api/v1/users/search":
-			// 	fallthrough
+			case GetEndpoint:
+				getRequest(t, w, r)
 			default:
-				res, err = getRequest(r)
+				t.Log("not found", r.URL)
+				http.NotFound(w, r)
 			}
-		case http.MethodPost:
-			res, err = postRequest(r)
-		case http.MethodPut:
-			res, err = putRequest(r)
-		}
-
-		if err != nil {
-			t.Fatal(err)
-		}
-		w.Header().Add("Content-Type", "application/json")
-		_, err = w.Write(res)
-		if err != nil {
-			t.Fatal(err)
 		}
 	}
 

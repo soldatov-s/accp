@@ -17,50 +17,50 @@ import (
 type empty struct{}
 
 type Client struct {
-	*rejson.Client
-	ctx context.Context
-	log zerolog.Logger
-	cfg *Config
+	Conn *rejson.Client
+	opt  *redis.Options
+	ctx  context.Context
+	log  zerolog.Logger
+	cfg  *Config
 
 	// Metrics
 	metrics.Service
 }
 
-func NewRedisClient(ctx context.Context, cfg *Config) (*Client, error) {
-	if err := cfg.Validate(); err != nil {
-		return nil, err
-	}
+func NewClient(ctx context.Context, cfg *Config) (*Client, error) {
+	cfg.SetDefault()
 
 	// Connect to database.
-	connOptions, err := redis.ParseURL(cfg.DSN)
+	connOptions, err := cfg.Options()
 	if err != nil {
 		return nil, err
 	}
-
-	// Set connection pooling options.
-	connOptions.MaxConnAge = cfg.MaxConnectionLifetime
-	connOptions.MinIdleConns = cfg.MinIdleConnections
-	connOptions.PoolSize = cfg.MaxOpenedConnections
 
 	r := &Client{
 		ctx: ctx,
 		cfg: cfg,
 		log: logger.GetPackageLogger(ctx, empty{}),
+		opt: connOptions,
 	}
 
-	client := redis.NewClient(connOptions)
-	r.Client = rejson.ExtendClient(r.ctx, client)
-
-	if err := r.Ping(r.ctx).Err(); err != nil {
-		return nil, err
-	}
-
-	r.log.Info().Msg("Redis connection established")
 	return r, nil
 }
 
+func (r *Client) Start() error {
+	client := redis.NewClient(r.opt)
+	if err := client.Ping(r.ctx).Err(); err != nil {
+		return err
+	}
+
+	r.Conn = rejson.ExtendClient(client)
+
+	r.log.Info().Msg("redis connection established")
+
+	return nil
+}
+
 func (r *Client) Add(key string, value interface{}, ttl time.Duration) error {
-	err := r.JSONSetWithExpire(key, ".", value, ttl)
+	err := r.Conn.JSONSetWithExpire(r.ctx, key, ".", value, ttl)
 	if err != nil {
 		return err
 	}
@@ -71,7 +71,7 @@ func (r *Client) Add(key string, value interface{}, ttl time.Duration) error {
 }
 
 func (r *Client) Select(key string, value interface{}) error {
-	cmdString := r.Get(r.ctx, key)
+	cmdString := r.Conn.JSONGet(r.ctx, key)
 	_, err := cmdString.Result()
 
 	if err != nil {
@@ -89,7 +89,7 @@ func (r *Client) Select(key string, value interface{}) error {
 }
 
 func (r *Client) Expire(key string, ttl time.Duration) error {
-	cmdBool := r.Client.Expire(r.ctx, key, ttl)
+	cmdBool := r.Conn.Expire(r.ctx, key, ttl)
 	_, err := cmdBool.Result()
 	if err != nil {
 		return err
@@ -101,19 +101,19 @@ func (r *Client) Expire(key string, ttl time.Duration) error {
 }
 
 func (r *Client) Update(key string, value interface{}, ttl time.Duration) error {
-	_, err := r.Set(r.ctx, key, value, ttl).Result()
+	err := r.Conn.JSONSetWithExpire(r.ctx, key, ".", value, ttl)
 	if err != nil {
 		return err
 	}
 
-	r.log.Debug().Msgf("update key %s in cache", key)
+	r.log.Debug().Msgf("add key %s to cache", key)
 
 	return nil
 }
 
 // JSONGet item from cache by key.
 func (r *Client) JSONGet(key, path string, value interface{}) error {
-	cmdString := r.JSONGET(key, path)
+	cmdString := r.Conn.JSONGet(r.ctx, key, path)
 	_, err := cmdString.Result()
 
 	if err != nil {
@@ -132,7 +132,7 @@ func (r *Client) JSONGet(key, path string, value interface{}) error {
 
 // JSONSet item in cache by key.
 func (r *Client) JSONSet(key, path, json string) error {
-	_, err := r.JSONSET(key, path, json).Result()
+	_, err := r.Conn.JSONSet(r.ctx, key, path, json).Result()
 	if err != nil {
 		return err
 	}
@@ -144,7 +144,7 @@ func (r *Client) JSONSet(key, path, json string) error {
 
 // JSONSetNX item in cache by key.
 func (r *Client) JSONSetNX(key, path, json string) error {
-	_, err := r.JSONSET(key, path, json, "NX").Result()
+	_, err := r.Conn.JSONSet(r.ctx, key, path, json, "NX").Result()
 	if err != nil {
 		return err
 	}
@@ -155,7 +155,7 @@ func (r *Client) JSONSetNX(key, path, json string) error {
 }
 
 func (r *Client) JSONDelete(key, path string) error {
-	_, err := r.JSONDEL(key, path).Result()
+	_, err := r.Conn.JSONDel(r.ctx, key, path).Result()
 	if err != nil {
 		return err
 	}
@@ -165,25 +165,21 @@ func (r *Client) JSONDelete(key, path string) error {
 	return nil
 }
 
-func (r *Client) JSONNumIncrBy(key, path string, num int) error {
-	_, err := r.JSONNUMINCRBy(key, path, num).Result()
-	if err != nil {
-		return err
+func formatSec(dur time.Duration) int64 {
+	if dur > 0 && dur < time.Second {
+		return 1
 	}
-
-	r.log.Debug().Msgf("JsonNumIncrBy key %s, path %s, num %d in cache", key, path, num)
-
-	return nil
+	return int64(dur / time.Second)
 }
 
 func (r *Client) LimitTTL(key string, ttl time.Duration) error {
-	_, err := r.Eval(r.ctx,
+	_, err := r.Conn.Eval(r.ctx,
 		`local current
 	current = redis.call("incr",KEYS[1])
 	if tonumber(current) == 1 then
 		redis.call("expire",KEYS[1],ARGV[1])
-	end`, []string{key}, ttl).Result()
-	if err != nil {
+	end`, []string{key}, formatSec(ttl)).Result()
+	if err != nil && err != redis.Nil {
 		return err
 	}
 
@@ -193,17 +189,35 @@ func (r *Client) LimitTTL(key string, ttl time.Duration) error {
 }
 
 func (r *Client) LimitCount(key string, num int) error {
-	_, err := r.Eval(r.ctx,
+	_, err := r.Conn.Eval(r.ctx,
 		`local current
 	current = redis.call("incr",KEYS[1])
-	if tonumber(current) >= ARGV[1] then
-		redis.call("set",KEYS[1],1)
+	if tonumber(current) >= tonumber(ARGV[1]) then
+		redis.call("set",KEYS[1],0)
 	end`, []string{key}, num).Result()
-	if err != nil {
+	if err != nil && err != redis.Nil {
 		return err
 	}
 
 	r.log.Debug().Msgf("limit key %s in cache", key)
+
+	return nil
+}
+
+func (r *Client) GetLimit(key string, value interface{}) error {
+	cmdString := r.Conn.Get(r.ctx, key)
+	_, err := cmdString.Result()
+
+	if err != nil {
+		return err
+	}
+
+	err = cmdString.Scan(value)
+	if err != nil {
+		return err
+	}
+
+	r.log.Debug().Msgf("get limit %s from cache", key)
 
 	return nil
 }
@@ -219,7 +233,7 @@ func (r *Client) GetMetrics() metrics.MapMetricsOptions {
 			}),
 		MetricFunc: func(m interface{}) {
 			(m.(prometheus.Gauge)).Set(0)
-			_, err := r.Ping(r.ctx).Result()
+			_, err := r.Conn.Ping(r.ctx).Result()
 			if err == nil {
 				(m.(prometheus.Gauge)).Set(1)
 			}
@@ -232,11 +246,15 @@ func (r *Client) GetMetrics() metrics.MapMetricsOptions {
 func (r *Client) GetReadyHandlers() metrics.MapCheckFunc {
 	_ = r.Service.GetReadyHandlers()
 	r.ReadyHandlers[strings.ToUpper(ProviderName+"_notfailed")] = func() (bool, string) {
-		if _, err := r.Ping(r.ctx).Result(); err != nil {
+		if _, err := r.Conn.Ping(r.ctx).Result(); err != nil {
 			return false, err.Error()
 		}
 
 		return true, ""
 	}
 	return r.ReadyHandlers
+}
+
+func (r *Client) Shutdown() error {
+	return r.Conn.Close()
 }

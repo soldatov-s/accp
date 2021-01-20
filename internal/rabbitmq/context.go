@@ -11,6 +11,10 @@ const (
 )
 
 func Registrate(ctx context.Context, cfg *Config) (context.Context, error) {
+	if cfg == nil {
+		return ctx, nil
+	}
+
 	i, err := NewPublisher(ctx, cfg)
 	if err != nil {
 		return nil, err

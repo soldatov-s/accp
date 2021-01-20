@@ -3,21 +3,17 @@ package external
 import (
 	"context"
 	"net/http"
+	"reflect"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/soldatov-s/accp/internal/cache/cachedata"
-	"github.com/soldatov-s/accp/internal/cache/cacheerrs"
+	"github.com/soldatov-s/accp/internal/cache/errors"
 	"github.com/soldatov-s/accp/internal/logger"
-	"github.com/soldatov-s/accp/internal/redis"
 )
 
 type empty struct{}
-
-const (
-	defaultKeyPrefix = "accp_"
-	defaultTTL       = 10 * time.Second
-)
 
 type Storage interface {
 	Add(key string, value interface{}, ttl time.Duration) error
@@ -27,11 +23,10 @@ type Storage interface {
 	JSONGet(key, path string, value interface{}) error
 	JSONSet(key, path, json string) error
 	JSONSetNX(key, path, json string) error
-	NewMutexByID(lockID string, expire, checkInterval time.Duration) redis.IMutex
 	JSONDelete(key, path string) error
-	JSONNumIncrBy(key, path string, num int) error
 	LimitTTL(key string, ttl time.Duration) error
 	LimitCount(key string, num int) error
+	GetLimit(key string, value interface{}) error
 }
 
 type Cache struct {
@@ -41,18 +36,17 @@ type Cache struct {
 	ExternalStorage Storage
 }
 
-func NewCache(ctx context.Context, cfg *Config) *Cache {
-	externalStorage := redis.Get(ctx)
-	if externalStorage == nil {
+func NewCache(ctx context.Context, cfg *Config, storage Storage) *Cache {
+	if storage == nil || (reflect.ValueOf(storage).Kind() == reflect.Ptr && reflect.ValueOf(storage).IsNil()) {
 		return nil
 	}
 
-	cfg.Validate()
+	cfg.SetDefault()
 
 	c := &Cache{
 		ctx:             ctx,
 		cfg:             cfg,
-		ExternalStorage: externalStorage,
+		ExternalStorage: storage,
 		log:             logger.GetPackageLogger(ctx, empty{}),
 	}
 
@@ -79,7 +73,7 @@ func (c *Cache) Add(key string, data cachedata.CacheData) error {
 func (c *Cache) Select(key string, data interface{}) error {
 	err := c.ExternalStorage.Select(c.cfg.KeyPrefix+key, data)
 	if err != nil {
-		return cacheerrs.ErrNotFoundInCache
+		return errors.ErrNotFound
 	}
 
 	c.log.Debug().Msgf("select %s from external cache", key)
@@ -90,16 +84,20 @@ func (c *Cache) Select(key string, data interface{}) error {
 func (c *Cache) Expire(key string) error {
 	err := c.ExternalStorage.Expire(c.cfg.KeyPrefix+key, c.cfg.TTL)
 	if err != nil {
-		return cacheerrs.ErrNotFoundInCache
+		return errors.ErrNotFound
 	}
 
-	c.log.Debug().Msgf("expire %s from external cache", key)
+	c.log.Debug().Msgf("expire %s external cache", key)
 
 	return nil
 }
 
 func (c *Cache) Update(key string, data cachedata.CacheData) error {
-	err := c.ExternalStorage.Update(c.cfg.KeyPrefix+key, data, c.cfg.TTL)
+	ttl := c.cfg.TTL
+	if data.GetStatusCode() >= http.StatusBadRequest {
+		ttl = c.cfg.TTLErr
+	}
+	err := c.ExternalStorage.Update(c.cfg.KeyPrefix+key, data, ttl)
 	if err != nil {
 		return err
 	}
@@ -143,18 +141,16 @@ func (c *Cache) JSONSetNX(key, path, json string) error {
 }
 
 func (c *Cache) GetUUID(key string, uuid *string) error {
-	err := c.ExternalStorage.JSONGet(c.cfg.KeyPrefix+key, "UUID", uuid)
+	err := c.ExternalStorage.JSONGet(c.cfg.KeyPrefix+key, "uuid", uuid)
 	if err != nil {
 		return err
 	}
 
-	c.log.Debug().Msgf("jsonget %s:%s from external cache", key, "UUID")
+	*uuid = strings.Trim(*uuid, "\"")
+
+	c.log.Debug().Msgf("jsonget %s:%s from external cache", key, "uuid")
 
 	return nil
-}
-
-func (c *Cache) NewMutexByID(lockID string, expire, checkInterval time.Duration) redis.IMutex {
-	return c.ExternalStorage.NewMutexByID("mu_"+lockID, expire, checkInterval)
 }
 
 func (c *Cache) JSONDelete(key, path string) error {
@@ -190,13 +186,13 @@ func (c *Cache) LimitCount(key string, num int) error {
 	return nil
 }
 
-func (c *Cache) JSONNumIncrBy(key, path string, num int) error {
-	err := c.ExternalStorage.JSONNumIncrBy(c.cfg.KeyPrefix+key, path, num)
+func (c *Cache) GetLimit(key string, value interface{}) error {
+	err := c.ExternalStorage.GetLimit(c.cfg.KeyPrefix+key, value)
 	if err != nil {
 		return err
 	}
 
-	c.log.Debug().Msgf("jsonNumIncrByExecute %s:%s:%d to external cache", key, path, num)
+	c.log.Debug().Msgf("get limit %s from external cache", key)
 
 	return nil
 }

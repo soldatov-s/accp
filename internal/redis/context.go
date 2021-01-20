@@ -11,7 +11,11 @@ const (
 )
 
 func Registrate(ctx context.Context, cfg *Config) (context.Context, error) {
-	i, err := NewRedisClient(ctx, cfg)
+	if cfg == nil {
+		return ctx, nil
+	}
+
+	i, err := NewClient(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}

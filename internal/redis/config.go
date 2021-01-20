@@ -3,7 +3,7 @@ package redis
 import (
 	"time"
 
-	"github.com/soldatov-s/accp/internal/errors"
+	"github.com/go-redis/redis/v8"
 )
 
 const (
@@ -19,11 +19,7 @@ type Config struct {
 	MaxConnectionLifetime time.Duration
 }
 
-func (c *Config) Validate() error {
-	if c.DSN == "" {
-		return errors.EmptyConfigParameter("dsn")
-	}
-
+func (c *Config) SetDefault() {
 	if c.MaxConnectionLifetime == 0 {
 		c.MaxConnectionLifetime = defaultMaxConnLifetime
 	}
@@ -35,6 +31,19 @@ func (c *Config) Validate() error {
 	if c.MaxOpenedConnections == 0 {
 		c.MaxOpenedConnections = defaultMaxOpenedConnections
 	}
+}
 
-	return nil
+func (c *Config) Options() (*redis.Options, error) {
+	// Connect to database.
+	connOptions, err := redis.ParseURL(c.DSN)
+	if err != nil {
+		return nil, err
+	}
+
+	// Set connection pooling options.
+	connOptions.MaxConnAge = c.MaxConnectionLifetime
+	connOptions.MinIdleConns = c.MinIdleConnections
+	connOptions.PoolSize = c.MaxOpenedConnections
+
+	return connOptions, nil
 }

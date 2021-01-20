@@ -1,7 +1,11 @@
-package models
+package rrdata
 
 import (
 	"github.com/soldatov-s/accp/internal/cache/external"
+)
+
+const (
+	defaultRefreshPrefix = "refreh_"
 )
 
 type RefreshData struct {
@@ -31,17 +35,17 @@ func (r *RefreshData) Inc() error {
 	}
 
 	if r.cache != nil && !isNew {
-		if err := r.cache.Select("refreh_"+r.hk, &r.counter); err != nil {
+		if err := r.cache.GetLimit(defaultRefreshPrefix+r.hk, &r.counter); err != nil {
 			return err
 		}
 	}
 
 	r.counter++
 	if r.cache != nil {
-		return r.cache.LimitCount("refreh_"+r.hk, r.maxCount)
+		return r.cache.LimitCount(defaultRefreshPrefix+r.hk, r.maxCount)
 	}
 
-	if r.counter > r.maxCount {
+	if r.counter >= r.maxCount {
 		r.counter = 0
 	}
 
