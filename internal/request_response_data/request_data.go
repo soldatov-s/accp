@@ -42,18 +42,18 @@ func (r *RequestData) Read(req *http.Request) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
-
 	if req.Body != nil {
+		buf := bytebufferpool.Get()
+		defer bytebufferpool.Put(buf)
+
 		_, err := io.Copy(buf, req.Body)
 		if err != nil {
 			return err
 		}
+		req.Body = ioutil.NopCloser(bytes.NewReader(buf.Bytes()))
+		r.Body = buf.String()
 	}
 
-	req.Body = ioutil.NopCloser(bytes.NewReader(buf.Bytes()))
-	r.Body = buf.String()
 	r.Header = make(http.Header)
 	httputils.CopyHeader(r.Header, req.Header)
 	r.Method = req.Method

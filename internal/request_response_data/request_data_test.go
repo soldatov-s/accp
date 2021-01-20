@@ -65,15 +65,46 @@ func TestRequestData_UnmarshalBinary(t *testing.T) {
 }
 
 func TestRequestData_Read(t *testing.T) {
-	reqData := RequestData{}
-	req := initHTTPRequest(t)
-	err := reqData.Read(req)
-	require.Nil(t, err)
+	tests := []struct {
+		name     string
+		testFunc func()
+	}{
+		{
+			name: "test read request with not nil body",
+			testFunc: func() {
+				reqData := RequestData{}
+				req := initHTTPRequest(t)
+				err := reqData.Read(req)
+				require.Nil(t, err)
 
-	require.Equal(t, testRequestBodyString, reqData.Body)
-	require.Equal(t, http.MethodGet, reqData.Method)
-	require.Equal(t, testRequestURL, reqData.URL)
-	require.Equal(t, req.Header, reqData.Header)
+				require.Equal(t, testRequestBodyString, reqData.Body)
+				require.Equal(t, http.MethodGet, reqData.Method)
+				require.Equal(t, testRequestURL, reqData.URL)
+				require.Equal(t, req.Header, reqData.Header)
+			},
+		},
+		{
+			name: "test read request with nil body",
+			testFunc: func() {
+				reqData := RequestData{}
+				req := initHTTPRequest(t)
+				req.Body = nil
+				err := reqData.Read(req)
+				require.Nil(t, err)
+
+				require.Equal(t, "", reqData.Body)
+				require.Equal(t, http.MethodGet, reqData.Method)
+				require.Equal(t, testRequestURL, reqData.URL)
+				require.Equal(t, req.Header, reqData.Header)
+			},
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			tt.testFunc()
+		})
+	}
 }
 
 func TestBuildRequest(t *testing.T) {
