@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/soldatov-s/accp/internal/httputils"
 	"github.com/stretchr/testify/require"
 )
@@ -26,6 +27,7 @@ type HTTPBody struct {
 	Result struct {
 		Message   string    `json:"message"`
 		TimeStamp time.Time `json:"timestamp"`
+		UUID      uuid.UUID `json:"uuid"`
 	} `json:"result"`
 }
 
@@ -33,6 +35,7 @@ func NewResponse(msg string) *HTTPBody {
 	answer := &HTTPBody{}
 	answer.Result.Message = msg
 	answer.Result.TimeStamp = time.Now()
+	answer.Result.UUID = uuid.New()
 	return answer
 }
 
@@ -64,6 +67,10 @@ func putRequest(_ *http.Request) (res []byte, err error) {
 
 func FakeBackendService(t *testing.T, host string) *httptest.Server {
 	handler := func(w http.ResponseWriter, r *http.Request) {
+		t.Logf("requested method %s", r.Method)
+		t.Logf("requested path %s", r.URL.Path)
+		// remove after adding POST/PUT methods
+		// nolint : gocritic
 		switch r.Method {
 		case http.MethodGet:
 			switch r.URL.Path {

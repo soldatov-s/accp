@@ -521,7 +521,24 @@ func TestLimitCount(t *testing.T) {
 				err = cmdString.Scan(&result)
 				require.Nil(t, err)
 				require.Equal(t, int64(2), result)
-			}},
+			},
+		},
+		{
+			name: "third increment",
+			testFunc: func() {
+				err = c.LimitCount(defaultKey, testCount)
+				require.Nil(t, err)
+
+				var result int64
+				cmdString := client.Conn.Get(client.Conn.Context(), cfg.KeyPrefix+defaultKey)
+				_, err = cmdString.Result()
+				require.Nil(t, err)
+
+				err = cmdString.Scan(&result)
+				require.Nil(t, err)
+				require.Equal(t, int64(3), result)
+			},
+		},
 		{
 			name: "increment after overflow",
 			testFunc: func() {

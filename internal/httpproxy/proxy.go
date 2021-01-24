@@ -17,6 +17,10 @@ import (
 	"github.com/soldatov-s/accp/internal/routes"
 )
 
+const (
+	RequestIDHeader = "x-request-id"
+)
+
 type empty struct{}
 
 type HTTPProxy struct {
@@ -70,9 +74,7 @@ func (p *HTTPProxy) fillRoutes(rc routes.MapConfig, r routes.MapRoutes, parentPa
 			params = params.Merge(rc[configKey].Parameters)
 		} else {
 			params = rc[configKey].Parameters
-			if err := params.Initilize(); err != nil {
-				return err
-			}
+			params.SetDefault()
 		}
 
 		k := strings.Trim(configKey, "/")
@@ -159,15 +161,15 @@ func (p *HTTPProxy) HydrationID(next http.Handler) http.Handler {
 			return
 		}
 
-		requestID := r.Header.Get("x-request-id")
+		requestID := r.Header.Get(RequestIDHeader)
 		if requestID == "" {
 			newUUID, err := uuid.NewRandom()
 			if err != nil {
 				p.log.Err(err).Msg("failed to generate requesID")
 				return
 			}
-			r.Header.Del("x-request-id")
-			r.Header.Add("x-request-id", newUUID.String())
+			r.Header.Del(RequestIDHeader)
+			r.Header.Add(RequestIDHeader, newUUID.String())
 		}
 
 		next.ServeHTTP(w, r)

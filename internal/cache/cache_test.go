@@ -332,18 +332,18 @@ func TestExternalCacheMultipleRequests(t *testing.T) {
 				require.Nil(t, err)
 				require.NotNil(t, v)
 
-				err = nil
+				var err1 error
 				if v.GetStatusCode() != http.StatusOK {
-					err = errors.New("concurent access to external cache")
+					err1 = errors.New("concurent access to external cache")
 				} else {
 					var result rrdata.RequestResponseData
-					err1 := c.External.Select(defaultKey, &result)
-					require.Nil(t, err1)
+					err2 := c.External.Select(defaultKey, &result)
+					require.Nil(t, err2)
 
 					t.Logf("status code in memory cache %d, in external cache %d", v.GetStatusCode(), result.GetStatusCode())
 				}
 
-				errorsCh <- err
+				errorsCh <- err1
 			}()
 		}
 

@@ -1,7 +1,6 @@
 package logger
 
 import (
-	// stdlib
 	"fmt"
 	"os"
 	"reflect"
@@ -10,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	// other
 	"github.com/rs/zerolog"
 )
 
@@ -98,7 +96,7 @@ func NewLogger() *Logger {
 }
 
 func (l *Logger) Initialize(cfg *Config) {
-	cfg.Validate()
+	cfg.SetDefault()
 	switch strings.ToUpper(cfg.Level) {
 	case LoggerLevelDebug:
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
@@ -187,7 +185,7 @@ func Initialize(parent *zerolog.Logger, emptyStruct interface{}) (log zerolog.Lo
 		log = log.With().Str("subsystem", pathElements[i+2]).Logger()
 	}
 
-	log.Info().Msg("Initializing...")
+	log.Info().Msg("initializing...")
 
 	return log
 }

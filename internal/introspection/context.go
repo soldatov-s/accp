@@ -11,6 +11,10 @@ const (
 )
 
 func Registrate(ctx context.Context, cfg *Config) (context.Context, error) {
+	if Get(ctx) != nil {
+		return ctx, nil
+	}
+
 	i, err := NewIntrospector(ctx, cfg)
 	if err != nil {
 		return nil, err
@@ -21,5 +25,8 @@ func Registrate(ctx context.Context, cfg *Config) (context.Context, error) {
 }
 
 func Get(ctx context.Context) *Introspect {
-	return accp.GetByName(ctx, DefaultProviderName).(*Introspect)
+	if v, ok := accp.GetByName(ctx, DefaultProviderName).(*Introspect); ok {
+		return v
+	}
+	return nil
 }

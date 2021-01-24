@@ -28,16 +28,24 @@ func CopyHTTPResponse(w http.ResponseWriter, resp *http.Response) error {
 }
 
 func HashRequest(r *http.Request) (string, error) {
-	buf := bytebufferpool.Get()
-	if r.Body != nil {
-		if _, err := io.Copy(buf, r.Body); err != nil {
-			return "", err
-		}
-	}
-
+	var sum []byte
 	introspectBody := r.Header.Get("accp-introspect-body")
 
-	sum := sha256.New().Sum([]byte(r.URL.RequestURI() + buf.String() + introspectBody))
+	var buf *bytebufferpool.ByteBuffer
+	if r.Body != nil {
+		buf = bytebufferpool.Get()
+		defer bytebufferpool.Put(buf)
+
+		_, err := io.Copy(buf, r.Body)
+		if err != nil {
+			return "", err
+		}
+		r.Body = ioutil.NopCloser(bytes.NewReader(buf.Bytes()))
+		sum = sha256.New().Sum([]byte(r.URL.RequestURI() + buf.String() + introspectBody))
+	} else {
+		sum = sha256.New().Sum([]byte(r.URL.RequestURI() + introspectBody))
+	}
+
 	return base64.URLEncoding.EncodeToString(sum), nil
 }
 

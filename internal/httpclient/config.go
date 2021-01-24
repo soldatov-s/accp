@@ -14,22 +14,24 @@ type Config struct {
 	Timeout time.Duration
 }
 
-func (pc *Config) Validate() error {
-	if pc.Size == 0 {
-		pc.Size = defaultSize
+func (c *Config) SetDefault() {
+	if c.Size == 0 {
+		c.Size = defaultSize
 	}
 
-	if pc.Timeout == 0 {
-		pc.Timeout = defaultTimeout
+	if c.Timeout == 0 {
+		c.Timeout = defaultTimeout
 	}
-
-	return nil
 }
 
-func (pc *Config) Merge(target *Config) *Config {
+func (c *Config) Merge(target *Config) *Config {
+	if c == nil {
+		return target
+	}
+
 	result := &Config{
-		Size:    pc.Size,
-		Timeout: pc.Timeout,
+		Size:    c.Size,
+		Timeout: c.Timeout,
 	}
 
 	if target == nil {

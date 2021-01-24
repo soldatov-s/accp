@@ -1,12 +1,26 @@
 package limits
 
-import "time"
+import (
+	"time"
+
+	"github.com/soldatov-s/accp/x/helper"
+)
+
+const (
+	defaultCounter      = 1000
+	defaultPT           = time.Minute
+	authorizationHeader = "authorization"
+	ipHeader            = "x-forwarded-for"
+	// default name for default items in mapconfig
+	defaultItemIP    = "ip"
+	defaultItemToken = "token"
+)
 
 type Config struct {
 	// Header is name of header in request for limit
-	Header []string
+	Header helper.Arguments
 	// Cookie is name of cookie in request for limit
-	Cookie []string
+	Cookie helper.Arguments
 	// Limit Count per Time period
 	// Conter limits count of request to API
 	Counter int
@@ -14,17 +28,21 @@ type Config struct {
 	PT time.Duration
 }
 
-func (c *Config) Validate() {
+func (c *Config) SetDefault() {
 	if c.Counter == 0 {
-		c.Counter = 1000
+		c.Counter = defaultCounter
 	}
 
 	if c.PT == 0 {
-		c.PT = time.Minute
+		c.PT = defaultPT
 	}
 }
 
 func (c *Config) Merge(target *Config) *Config {
+	if c == nil {
+		return target
+	}
+
 	result := &Config{
 		Header:  c.Header,
 		Cookie:  c.Cookie,
@@ -37,11 +55,21 @@ func (c *Config) Merge(target *Config) *Config {
 	}
 
 	if len(target.Header) > 0 {
-		result.Header = append(result.Header, target.Header...)
+		for _, v := range target.Header {
+			if result.Header.Matches(v) {
+				continue
+			}
+			result.Header = append(result.Header, v)
+		}
 	}
 
 	if len(target.Cookie) > 0 {
-		result.Cookie = append(result.Cookie, target.Cookie...)
+		for _, v := range target.Cookie {
+			if result.Cookie.Matches(v) {
+				continue
+			}
+			result.Cookie = append(result.Cookie, v)
+		}
 	}
 
 	if target.Counter > 0 {
@@ -57,22 +85,32 @@ func (c *Config) Merge(target *Config) *Config {
 
 type MapConfig map[string]*Config
 
+// NewMapConfig creates MapConfig with predefined items "token" and "ip"
 func NewMapConfig() MapConfig {
 	l := make(MapConfig)
-	l["token"] = &Config{
-		Header: []string{"Authorization"},
+	l[defaultItemToken] = &Config{
+		Header: []string{authorizationHeader},
 	}
-	l["ip"] = &Config{
-		Header: []string{"X-Forwarded-For"},
+	l[defaultItemIP] = &Config{
+		Header: []string{ipHeader},
 	}
 
 	return l
 }
 
+// Merge merges MapConfig
 func (c MapConfig) Merge(target MapConfig) MapConfig {
+	if c == nil {
+		return target
+	}
+
 	result := make(MapConfig)
 	for k, v := range c {
 		result[k] = v
+	}
+
+	if target == nil {
+		return result
 	}
 
 	for k, v := range target {

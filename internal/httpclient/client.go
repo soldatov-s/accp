@@ -5,12 +5,8 @@ import (
 	"time"
 )
 
-const (
-	defaultClientTimeout = 60 * time.Second
-)
-
 func NewPoolClient(timeout time.Duration, netTransport http.RoundTripper) *http.Client {
-	clientTimeout := defaultClientTimeout
+	clientTimeout := defaultTimeout
 	if timeout > 0 {
 		clientTimeout = timeout
 	}

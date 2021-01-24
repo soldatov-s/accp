@@ -10,31 +10,28 @@ type Pool struct {
 	netTransport *http.Transport
 }
 
-func NewPool(poolCfg *Config) *Pool {
+func NewPool(cfg *Config) *Pool {
 	p := &Pool{}
-	p.ch = make(chan *http.Client, poolCfg.Size)
+	p.ch = make(chan *http.Client, cfg.Size)
 
-	clientTimeout := defaultClientTimeout
-	if poolCfg.Timeout > 0 {
-		clientTimeout = poolCfg.Timeout
-	}
+	cfg.SetDefault()
 
 	dialer := &net.Dialer{
-		Timeout: clientTimeout,
+		Timeout: cfg.Timeout,
 	}
 
 	p.netTransport = &http.Transport{
 		MaxIdleConns:          1024,
 		MaxIdleConnsPerHost:   1024,
 		Dial:                  dialer.Dial,
-		TLSHandshakeTimeout:   clientTimeout,
-		ExpectContinueTimeout: clientTimeout,
-		IdleConnTimeout:       clientTimeout,
-		ResponseHeaderTimeout: clientTimeout,
+		TLSHandshakeTimeout:   cfg.Timeout,
+		ExpectContinueTimeout: cfg.Timeout,
+		IdleConnTimeout:       cfg.Timeout,
+		ResponseHeaderTimeout: cfg.Timeout,
 	}
 
-	for i := 0; i < poolCfg.Size; i++ {
-		p.ch <- NewPoolClient(poolCfg.Timeout, p.netTransport)
+	for i := 0; i < cfg.Size; i++ {
+		p.ch <- NewPoolClient(cfg.Timeout, p.netTransport)
 	}
 	return p
 }

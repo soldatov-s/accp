@@ -1,44 +1,32 @@
 package testproxyhelpers
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
-
-	"github.com/soldatov-s/accp/internal/httpclient"
-	"github.com/soldatov-s/accp/internal/introspection"
-	"github.com/stretchr/testify/require"
 )
 
 const (
+	DefaultFakeIntrospectorHost           = "localhost:10000"
+	DefaultFakeIntrospectorURL            = "http://" + DefaultFakeIntrospectorHost
+	DefaultFakeIntrospectorEndpoint       = "/oauth2/introspect"
+	DefaultFakeIntrospectorContentType    = "application/x-www-form-urlencoded"
+	DefaultFakeIntrospectorMethod         = "POST"
+	DefaultFakeIntrospectorValidMarker    = `"active":true`
+	DefaultFakeIntrospectorBodyTemplate   = `token_type_hint=access_token&token={{.Token}}`
+	DefaultFakeIntrospectorCookieName     = "access-token"
+	DefaultFakeIntrospectorQueryParamName = "access_token"
+
 	TestToken = "goodToken"
 	BadToken  = "badToken"
 )
 
-func InitTestIntrospector(t *testing.T) *introspection.Introspect {
-	ctx := context.Background()
+func DefaultFakeIntrospectorCookiesName() []string {
+	return []string{DefaultFakeIntrospectorCookieName}
+}
 
-	ic := &introspection.Config{
-		DSN:            "http://localhost:8001",
-		Endpoint:       "/oauth2/introspect",
-		ContentType:    "application/x-www-form-urlencoded",
-		Method:         "POST",
-		ValidMarker:    `"active":true`,
-		BodyTemplate:   `token_type_hint=access_token&token={{.Token}}`,
-		CookieName:     []string{"access-token"},
-		QueryParamName: []string{"access_token"},
-		Pool: &httpclient.Config{
-			Size:    50,
-			Timeout: 10 * time.Second,
-		},
-	}
-
-	i, err := introspection.NewIntrospector(ctx, ic)
-	require.Nil(t, err)
-
-	return i
+func DefaultFakeIntrospectorQueryParamsName() []string {
+	return []string{DefaultFakeIntrospectorQueryParamName}
 }
 
 func FakeIntrospectorService(t *testing.T, host string) *httptest.Server {

@@ -21,7 +21,7 @@ const (
 	testRequestResponseTimeStamp = int64(1611145887)
 	testRequestResponseUUID      = "4498280e-91ba-46d8-9030-6720d3ca6a9b"
 	// nolint : lll
-	testRequestResponseJSON = `{"Body":"test body","Header":null,"StatusCode":200,"TimeStamp":1611145887,"UUID":"4498280e-91ba-46d8-9030-6720d3ca6a9b"}`
+	testRequestResponseJSON = `{"body":"test body","header":null,"status_code":200,"time_stamp":1611145887,"uuid":"4498280e-91ba-46d8-9030-6720d3ca6a9b"}`
 )
 
 func TestNewRequestResponseData(t *testing.T) {
@@ -96,6 +96,8 @@ func TestUpdate(t *testing.T) {
 					http.StatusServiceUnavailable,
 				)
 				require.Equal(t, errResp.StatusCode, rrData.Response.StatusCode)
+				rrData.Response.Header.Del(ResponseCachedHeader)
+				rrData.Response.Header.Del(ResponseSourceHeader)
 				require.Equal(t, errResp.Header, rrData.Response.Header)
 				bodyBytes, err := ioutil.ReadAll(errResp.Body)
 				require.Nil(t, err)
@@ -197,6 +199,46 @@ func TestUpdate(t *testing.T) {
 				t.Log(rrData.Response.Body)
 			},
 		},
+		{
+			name: "test request to backend, second request return 404",
+			testFunc: func() {
+				req := initHTTPRequest(t)
+
+				rrData := NewRequestResponseData(testRequestResponseHK, testRequestResponseMax, nil)
+				require.NotNil(t, rrData)
+
+				server := testProxyHelpers.FakeBackendService(t, testProxyHelpers.DefaultFakeServiceHost)
+				server.Start()
+				defer server.Close()
+
+				err := rrData.Request.Read(req)
+				require.Nil(t, err)
+
+				err = rrData.Update(client)
+				require.Nil(t, err)
+
+				var respData testProxyHelpers.HTTPBody
+				err = json.Unmarshal([]byte(rrData.Response.Body), &respData)
+				require.Nil(t, err)
+
+				require.Equal(t, testProxyHelpers.DefaultGetAnswer, respData.Result.Message)
+
+				// second request
+				req = initHTTPRequest(t)
+
+				req.URL, err = url.Parse(req.URL.String() + "/" + uuid.New().String())
+				require.Nil(t, err)
+
+				err = rrData.Request.Read(req)
+				require.Nil(t, err)
+
+				err = rrData.Update(client)
+				require.Nil(t, err)
+				require.Equal(t, http.StatusNotFound, rrData.Response.StatusCode)
+
+				t.Log(rrData.Response.Body)
+			},
+		},
 	}
 	for _, tt := range tests {
 		tt := tt
@@ -231,6 +273,8 @@ func TestUpdateByRequest(t *testing.T) {
 						`": dial tcp 127.0.0.1:10000: connect: connection refused`,
 					http.StatusServiceUnavailable,
 				)
+				rrData.Response.Header.Del(ResponseCachedHeader)
+				rrData.Response.Header.Del(ResponseSourceHeader)
 				require.Equal(t, errResp.StatusCode, rrData.Response.StatusCode)
 				require.Equal(t, errResp.Header, rrData.Response.Header)
 				bodyBytes, err := ioutil.ReadAll(errResp.Body)
@@ -313,6 +357,40 @@ func TestUpdateByRequest(t *testing.T) {
 				server := testProxyHelpers.FakeBackendService(t, testProxyHelpers.DefaultFakeServiceHost)
 				server.Start()
 				defer server.Close()
+
+				err = rrData.UpdateByRequest(client, req)
+				require.Nil(t, err)
+				require.Equal(t, http.StatusNotFound, rrData.Response.StatusCode)
+
+				t.Log(rrData.Response.Body)
+			},
+		},
+		{
+			name: "test request to backend, second request return 404",
+			testFunc: func() {
+				req := initHTTPRequest(t)
+
+				rrData := NewRequestResponseData(testRequestResponseHK, testRequestResponseMax, nil)
+				require.NotNil(t, rrData)
+
+				server := testProxyHelpers.FakeBackendService(t, testProxyHelpers.DefaultFakeServiceHost)
+				server.Start()
+				defer server.Close()
+
+				err := rrData.UpdateByRequest(client, req)
+				require.Nil(t, err)
+
+				var respData testProxyHelpers.HTTPBody
+				err = json.Unmarshal([]byte(rrData.Response.Body), &respData)
+				require.Nil(t, err)
+
+				require.Equal(t, testProxyHelpers.DefaultGetAnswer, respData.Result.Message)
+
+				// second request
+				req = initHTTPRequest(t)
+
+				req.URL, err = url.Parse(req.URL.String() + "/" + uuid.New().String())
+				require.Nil(t, err)
 
 				err = rrData.UpdateByRequest(client, req)
 				require.Nil(t, err)

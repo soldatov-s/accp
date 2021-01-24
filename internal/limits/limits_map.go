@@ -14,18 +14,18 @@ func NewLimitedParamsOfRequest(mc MapConfig, r *http.Request) LimitedParamsOfReq
 	for k, v := range mc {
 		for _, vv := range v.Header {
 			if h := r.Header.Get(vv); h != "" {
-				if strings.EqualFold(vv, "authorization") {
+				if strings.EqualFold(vv, authorizationHeader) {
 					splitToken := strings.Split(h, " ")
 					if len(splitToken) < 2 {
-						h = splitToken[0]
+						h = strings.TrimSpace(splitToken[0])
 					} else {
-						h = splitToken[1]
+						h = strings.TrimSpace(splitToken[1])
 					}
 				}
 				// Always taken client IP
-				if strings.EqualFold(vv, "x-forwarded-for") {
+				if strings.EqualFold(vv, ipHeader) {
 					splitIP := strings.Split(h, ",")
-					h = splitIP[0]
+					h = strings.TrimSpace(splitIP[0])
 				}
 				l[strings.ToLower(k)] = h
 			}
@@ -33,7 +33,7 @@ func NewLimitedParamsOfRequest(mc MapConfig, r *http.Request) LimitedParamsOfReq
 
 		for _, vv := range v.Cookie {
 			if c, err := r.Cookie(vv); err == nil {
-				l[strings.ToLower(k)] = c.Value
+				l[strings.ToLower(k)] = strings.TrimSpace(c.Value)
 			}
 		}
 	}

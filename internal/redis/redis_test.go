@@ -73,10 +73,7 @@ func initClient(t *testing.T, dsn string) *Client {
 		t,
 		time.Second*5,
 		time.Minute*5,
-		func() (err error) {
-			err = client.Start()
-			return err
-		},
+		client.Start,
 	)
 
 	require.Nil(t, err)
@@ -405,7 +402,24 @@ func TestLimitCount(t *testing.T) {
 				err = cmdString.Scan(&result)
 				require.Nil(t, err)
 				require.Equal(t, int64(2), result)
-			}},
+			},
+		},
+		{
+			name: "third increment",
+			testFunc: func() {
+				err = c.LimitCount(defaultKey, testCount)
+				require.Nil(t, err)
+
+				var result int64
+				cmdString := c.Conn.Get(c.Conn.Context(), defaultKey)
+				_, err = cmdString.Result()
+				require.Nil(t, err)
+
+				err = cmdString.Scan(&result)
+				require.Nil(t, err)
+				require.Equal(t, int64(3), result)
+			},
+		},
 		{
 			name: "increment after overflow",
 			testFunc: func() {
@@ -502,4 +516,17 @@ func TestGetReadyHandlers(t *testing.T) {
 
 	_, ok := h[strings.ToUpper(ProviderName+"_notfailed")]
 	require.True(t, ok)
+}
+
+func TestShutdown(t *testing.T) {
+	dsn, err := dockertest.RunRedis()
+	require.Nil(t, err)
+	defer dockertest.KillAllDockers()
+
+	c := initClient(t, dsn)
+	h := c.GetReadyHandlers()
+	require.NotNil(t, h)
+
+	err = c.Shutdown()
+	require.Nil(t, err)
 }

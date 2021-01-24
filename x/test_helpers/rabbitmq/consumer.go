@@ -78,3 +78,23 @@ func (c *Consumer) StartConsume(exchangeName, queueName, routingKey, consume str
 
 	return msg, nil
 }
+
+func (c *Consumer) Shutdown() error {
+	if c == nil || c.Conn == nil {
+		return nil
+	}
+
+	err := c.Chan.Close()
+	if err != nil {
+		return err
+	}
+	err = c.Conn.Close()
+	if err != nil {
+		return err
+	}
+
+	c.Chan = nil
+	c.Conn = nil
+
+	return nil
+}

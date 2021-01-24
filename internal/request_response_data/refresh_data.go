@@ -1,6 +1,8 @@
 package rrdata
 
 import (
+	"sync/atomic"
+
 	"github.com/soldatov-s/accp/internal/cache/external"
 )
 
@@ -10,7 +12,7 @@ const (
 
 type RefreshData struct {
 	maxCount int
-	counter  int
+	counter  int64
 	cache    *external.Cache
 	hk       string
 }
@@ -40,22 +42,22 @@ func (r *RefreshData) Inc() error {
 		}
 	}
 
-	r.counter++
+	atomic.AddInt64(&r.counter, 1)
 	if r.cache != nil {
 		return r.cache.LimitCount(defaultRefreshPrefix+r.hk, r.maxCount)
 	}
 
-	if r.counter >= r.maxCount {
-		r.counter = 0
+	if r.counter > int64(r.maxCount) {
+		atomic.StoreInt64(&r.counter, 0)
 	}
 
 	return nil
 }
 
 func (r *RefreshData) Current() int {
-	return r.counter
+	return int(r.counter)
 }
 
 func (r *RefreshData) Check() bool {
-	return r.counter < r.maxCount
+	return r.counter < int64(r.maxCount)
 }

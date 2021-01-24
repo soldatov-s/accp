@@ -192,7 +192,7 @@ func (r *Client) LimitCount(key string, num int) error {
 	_, err := r.Conn.Eval(r.ctx,
 		`local current
 	current = redis.call("incr",KEYS[1])
-	if tonumber(current) >= tonumber(ARGV[1]) then
+	if tonumber(current) > tonumber(ARGV[1]) then
 		redis.call("set",KEYS[1],0)
 	end`, []string{key}, num).Result()
 	if err != nil && err != redis.Nil {

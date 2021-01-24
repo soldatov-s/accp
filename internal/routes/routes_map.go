@@ -2,14 +2,13 @@ package routes
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"strings"
 )
 
 type MapRoutes map[string]*Route
 
-func (m MapRoutes) findRoute(path string) *Route {
+func (m MapRoutes) FindRouteByPath(path string) *Route {
 	path = strings.Trim(path, "/")
 	strs := strings.Split(path, "/")
 	var (
@@ -30,10 +29,6 @@ func (m MapRoutes) findRoute(path string) *Route {
 	}
 
 	return route
-}
-
-func (m MapRoutes) FindRouteByPath(path string) *Route {
-	return m.findRoute(path)
 }
 
 func (m MapRoutes) FindRouteByHTTPRequest(r *http.Request) *Route {
@@ -61,7 +56,7 @@ func (m MapRoutes) AddRouteByPath(ctx context.Context, path, routeName string, p
 			tmp = tmp[s].Routes
 		} else {
 			if i+1 == len(strs) {
-				return nil, fmt.Errorf("duplicated route: %s", path)
+				return nil, &ErrDuplicatedRoute{route: path}
 			}
 			tmp = route.Routes
 		}

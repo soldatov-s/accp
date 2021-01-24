@@ -24,6 +24,12 @@ import (
 	rrdata "github.com/soldatov-s/accp/internal/request_response_data"
 )
 
+const (
+	hydrationIntrospectPlainText = "plaintext"
+	hydrationIntrospectBase64    = "base64"
+	hydrationIntrospectHeader    = "accp-introspect-body"
+)
+
 type empty struct{}
 
 type Route struct {
@@ -44,17 +50,25 @@ type Route struct {
 }
 
 func NewRoute(ctx context.Context, routeName string, params *Parameters) *Route {
-	return &Route{
+	r := &Route{
 		ctx:            ctx,
 		log:            logger.GetPackageLogger(ctx, empty{}),
 		Parameters:     params,
 		route:          routeName,
 		Routes:         make(MapRoutes),
-		publisher:      rabbitmq.Get(ctx),
-		introspector:   introspection.Get(ctx),
 		waitAnswerList: make(map[string]chan struct{}),
 		waiteAnswerMu:  make(map[string]*sync.Mutex),
 	}
+
+	if p := rabbitmq.Get(ctx); p != nil {
+		r.publisher = p
+	}
+
+	if i := introspection.Get(ctx); i != nil {
+		r.introspector = i
+	}
+
+	return r
 }
 
 func (r *Route) Initilize() {
@@ -64,7 +78,12 @@ func (r *Route) Initilize() {
 		return
 	}
 
-	r.Cache = cache.NewCache(r.ctx, r.Parameters.Cache, redis.Get(r.ctx))
+	if externalCache := redis.Get(r.ctx); externalCache != nil {
+		r.Cache = cache.NewCache(r.ctx, r.Parameters.Cache, externalCache)
+	} else {
+		r.Cache = cache.NewCache(r.ctx, r.Parameters.Cache, nil)
+	}
+
 	r.Limits = limits.NewLimits(r.route, r.Parameters.Limits, r.Cache.External)
 
 	if r.Parameters.Refresh.Time > 0 {
@@ -102,7 +121,11 @@ func (r *Route) CheckLimits(req *http.Request) (*bool, error) {
 
 func (r *Route) refreshHandler(hk string, data *rrdata.RequestResponseData) error {
 	data.Mu.Lock()
-	defer data.Mu.RUnlock()
+	defer data.Mu.Unlock()
+
+	if data.Request == nil {
+		return nil
+	}
 
 	req, err := data.Request.BuildRequest()
 	if err != nil {
@@ -127,6 +150,8 @@ func (r *Route) refreshHandler(hk string, data *rrdata.RequestResponseData) erro
 		return errors.Wrap(err, "failed to update request/response data")
 	}
 
+	r.log.Debug().Msgf("%s: cache refreshed", hk)
+
 	if r.Cache.External == nil {
 		return nil
 	}
@@ -135,7 +160,7 @@ func (r *Route) refreshHandler(hk string, data *rrdata.RequestResponseData) erro
 		return errors.Wrap(err, "failed to update external cache")
 	}
 
-	r.log.Debug().Msgf("%s: cache refreshed", hk)
+	r.log.Debug().Msgf("%s: external cache refreshed", hk)
 	return nil
 }
 
@@ -144,6 +169,7 @@ func (r *Route) refreshByTime() {
 		data := v.(*cachedata.CacheItem).Data.(*rrdata.RequestResponseData)
 		hk := k.(string)
 		go func() {
+			r.log.Debug().Msgf("try to refersh %s by time", hk)
 			if err := r.refreshHandler(hk, data); err != nil {
 				r.log.Error().Err(err).Msgf("%s: refresh cache failed", hk)
 			}
@@ -169,25 +195,29 @@ func (r *Route) requestToBack(hk string, w http.ResponseWriter, req *http.Reques
 	client := r.Pool.GetFromPool()
 	defer r.Pool.PutToPool(client)
 
+	rrData := rrdata.NewRequestResponseData(hk, r.Parameters.Refresh.MaxCount, r.Cache.External)
+
 	var resp *http.Response
 	req.URL, err = url.Parse(r.Parameters.DSN + req.URL.String())
 	if err != nil {
 		resp = httputils.ErrResponse(err.Error(), http.StatusServiceUnavailable)
+		rrData.Request = nil
 	} else {
-		// nolint
-		resp, err = client.Do(req)
-		if err != nil {
+		// nolint : bodyclose
+		if err = rrData.Request.Read(req); err != nil {
+			resp = httputils.ErrResponse(err.Error(), http.StatusServiceUnavailable)
+			rrData.Request = nil
+		} else if resp, err = client.Do(req); err != nil {
 			resp = httputils.ErrResponse(err.Error(), http.StatusServiceUnavailable)
 		}
 	}
 	defer resp.Body.Close()
 
-	rrData := rrdata.NewRequestResponseData(hk, r.Parameters.Refresh.Count, r.Cache.External)
-	if err := rrData.ReadAll(req, resp); err != nil {
+	if err := rrData.Response.Read(resp); err != nil {
 		r.log.Err(err).Msg("failed to read request/response data")
 	}
 
-	if err := rrData.Response.Write(w); err != nil {
+	if err := rrData.Response.Write(w, rrdata.ResponseBack); err != nil {
 		r.log.Err(err).Msg("failed to write data to client from response")
 	}
 
@@ -233,16 +263,16 @@ func (r *Route) HydrationIntrospect(req *http.Request) error {
 
 	var str string
 	switch r.Parameters.IntrospectHydration {
-	case "nothing":
-		return nil
-	case "plaintext":
+	case hydrationIntrospectPlainText:
 		str = strings.ReplaceAll(strings.ReplaceAll(string(content), "\"", "\\\""), "\n", "")
-	case "base64":
+	case hydrationIntrospectBase64:
 		str = base64.StdEncoding.EncodeToString(content)
+	default:
+		return nil
 	}
 
-	req.Header.Add("accp-introspect-body", str)
-	r.log.Debug().Msgf("accp-introspect-body header: %s", str)
+	req.Header.Add(hydrationIntrospectHeader, str)
+	r.log.Debug().Msgf("introspect header: %s", str)
 
 	return nil
 }
@@ -250,12 +280,9 @@ func (r *Route) HydrationIntrospect(req *http.Request) error {
 // refresh incremets refresh count and checks that we not reached the limit
 func (r *Route) refresh(data *rrdata.RequestResponseData, hk string) {
 	// Check that we have refresh limit by request count
-	if r.Parameters.Refresh.Count == 0 {
+	if r.Parameters.Refresh.MaxCount == 0 {
 		return
 	}
-
-	r.log.Debug().Msgf("refresh cache, key %s, maxCount %d, current count %d", hk, r.Parameters.Refresh.Count, data.Response.Refresh.Current())
-
 	if err := data.Response.Refresh.Inc(); err != nil {
 		r.log.Error().Err(err).Msg("failed to inc refresh counter")
 		return
@@ -263,13 +290,14 @@ func (r *Route) refresh(data *rrdata.RequestResponseData, hk string) {
 		return
 	}
 
+	r.log.Debug().Msgf("try to refersh %s by counter", hk)
 	if err := r.refreshHandler(hk, data); err != nil {
 		r.log.Error().Err(err).Msgf("%s: refresh cache failed", hk)
 	}
 }
 
 func (r *Route) responseHandle(data *rrdata.RequestResponseData, w http.ResponseWriter, req *http.Request, hk string) {
-	// If data was get from redis, the request will be empty
+	// If data was getted from redis, the request will be empty
 	if data.Request == nil {
 		var err error
 		if data.Request, err = rrdata.NewRequestData(req); err != nil {
@@ -277,7 +305,7 @@ func (r *Route) responseHandle(data *rrdata.RequestResponseData, w http.Response
 		}
 	}
 
-	if err := data.Response.Write(w); err != nil {
+	if err := data.Response.Write(w, rrdata.ResponseCache); err != nil {
 		r.log.Err(err).Msg("failed to write data from cache")
 	}
 

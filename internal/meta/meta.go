@@ -10,6 +10,14 @@ type ApplicationInfo struct {
 	Description string
 }
 
+func NewApplicationInfo() *ApplicationInfo {
+	return &ApplicationInfo{
+		Name:        "unknown",
+		Version:     "0.0.0",
+		Description: "no description",
+	}
+}
+
 func (appInfo *ApplicationInfo) GetBuildInfo() string {
 	return appInfo.Version + ", builded: " +
 		appInfo.Builded + ", hash: " + appInfo.Hash

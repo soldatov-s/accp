@@ -3,41 +3,43 @@ package refresh
 import "time"
 
 const (
-	defaultCount = 100
-	defaultTime  = 10 * time.Second
+	defaultMaxCount = 100
+	defaultTime     = 10 * time.Second
 )
 
 type Config struct {
-	// Conter
-	Count int
-	// Time
+	// Conter - the maximum of requests after which will be refreshed cache
+	MaxCount int
+	// Time - the refresh period
 	Time time.Duration
 }
 
-func (rc *Config) Initilize() error {
-	if rc.Count == 0 {
-		rc.Count = defaultCount
+func (c *Config) SetDefault() {
+	if c.MaxCount == 0 {
+		c.MaxCount = defaultMaxCount
 	}
 
-	if rc.Time == 0 {
-		rc.Time = defaultTime
+	if c.Time == 0 {
+		c.Time = defaultTime
 	}
-
-	return nil
 }
 
-func (rc *Config) Merge(target *Config) *Config {
+func (c *Config) Merge(target *Config) *Config {
+	if c == nil {
+		return target
+	}
+
 	result := &Config{
-		Count: rc.Count,
-		Time:  rc.Time,
+		MaxCount: c.MaxCount,
+		Time:     c.Time,
 	}
 
 	if target == nil {
 		return result
 	}
 
-	if target.Count > 0 {
-		result.Count = target.Count
+	if target.MaxCount > 0 {
+		result.MaxCount = target.MaxCount
 	}
 
 	if target.Time > 0 {

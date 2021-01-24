@@ -79,7 +79,7 @@ func initConfig() *external.Config {
 	}
 }
 
-func initCache(t *testing.T, dsn string) (*external.Cache, *redis.Client) {
+func initCache(t *testing.T, dsn string) *external.Cache {
 	ctx := context.Background()
 	ctx = initApp(ctx)
 	ctx = initLogger(ctx)
@@ -88,7 +88,7 @@ func initCache(t *testing.T, dsn string) (*external.Cache, *redis.Client) {
 	client := initExternal(ctx, t, dsn)
 	c := external.NewCache(ctx, cfg, client)
 
-	return c, client
+	return c
 }
 func initNewRefreshData(cache *external.Cache) *RefreshData {
 	return NewRefreshData(defaultKey, 3, cache)
@@ -98,7 +98,7 @@ func TestNewRefreshData(t *testing.T) {
 	require.Nil(t, err)
 	defer dockertest.KillAllDockers()
 
-	c, _ := initCache(t, dsn)
+	c := initCache(t, dsn)
 	require.NotNil(t, c)
 
 	d := initNewRefreshData(c)
@@ -110,7 +110,7 @@ func TestInc(t *testing.T) {
 	require.Nil(t, err)
 	defer dockertest.KillAllDockers()
 
-	c, _ := initCache(t, dsn)
+	c := initCache(t, dsn)
 	require.NotNil(t, c)
 
 	d := initNewRefreshData(c)
@@ -135,7 +135,7 @@ func TestCurrent(t *testing.T) {
 	require.Nil(t, err)
 	defer dockertest.KillAllDockers()
 
-	c, _ := initCache(t, dsn)
+	c := initCache(t, dsn)
 	require.NotNil(t, c)
 
 	d := initNewRefreshData(c)
@@ -153,7 +153,7 @@ func TestCheck(t *testing.T) {
 	require.Nil(t, err)
 	defer dockertest.KillAllDockers()
 
-	c, _ := initCache(t, dsn)
+	c := initCache(t, dsn)
 	require.NotNil(t, c)
 
 	d := initNewRefreshData(c)
@@ -172,6 +172,13 @@ func TestCheck(t *testing.T) {
 
 	res = d.Check()
 	require.True(t, res)
+
+	err = d.Inc()
+	require.Nil(t, err)
+	t.Log("current", d.counter, "max", d.maxCount)
+
+	res = d.Check()
+	require.False(t, res)
 
 	err = d.Inc()
 	require.Nil(t, err)

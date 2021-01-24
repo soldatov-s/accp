@@ -17,7 +17,7 @@ type MapConfig map[string]*Config
 // SortKeys returns the slice with sorted keys
 func (m MapConfig) SortKeys() []string {
 	// Sort config map
-	keys := make([]string, len(m))
+	keys := make([]string, 0, len(m))
 
 	for k := range m {
 		keys = append(keys, k)

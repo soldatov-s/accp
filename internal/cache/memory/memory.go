@@ -99,9 +99,8 @@ func (c *Cache) clear(k, v interface{}, timeNow time.Time) bool {
 	if (cacheData.GetStatusCode() < http.StatusBadRequest && timeNow.Sub(cacheItem.TimeStamp) > c.cfg.TTL) ||
 		(cacheData.GetStatusCode() >= http.StatusBadRequest && timeNow.Sub(cacheItem.TimeStamp) > c.cfg.TTLErr) {
 		c.storage.Delete(k)
+		c.log.Debug().Msgf("remove expired from cache: %s", k)
 	}
-
-	c.log.Debug().Msgf("remove expired from cache: %s", k)
 
 	return true
 }

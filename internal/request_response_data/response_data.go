@@ -2,6 +2,7 @@ package rrdata
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -13,6 +14,22 @@ import (
 	"github.com/soldatov-s/accp/internal/httputils"
 	"github.com/valyala/bytebufferpool"
 )
+
+const (
+	ResponseCachedHeader = "accp-cached"
+	ResponseSourceHeader = "accp-source"
+)
+
+type ResponseSource int
+
+const (
+	ResponseBack ResponseSource = iota
+	ResponseCache
+)
+
+func (r ResponseSource) String() string {
+	return []string{"back", "cache"}[r]
+}
 
 type ResponseData struct {
 	readMu     sync.RWMutex
@@ -38,13 +55,13 @@ func (r *ResponseData) UnmarshalBinary(data []byte) error {
 	return json.Unmarshal(data, r)
 }
 
-func (r *ResponseData) Write(w http.ResponseWriter) error {
+func (r *ResponseData) Write(w http.ResponseWriter, src fmt.Stringer) error {
 	r.readMu.RLock()
 	defer r.readMu.RUnlock()
 
 	httputils.CopyHeader(w.Header(), r.Header)
+	w.Header().Add(ResponseSourceHeader, src.String())
 	w.WriteHeader(r.StatusCode)
-	w.Header().Add("accp-refreshed", strconv.Itoa(int(r.TimeStamp)))
 	_, err := w.Write([]byte(r.Body))
 	return err
 }
@@ -67,6 +84,7 @@ func (r *ResponseData) Read(resp *http.Response) error {
 	r.StatusCode = resp.StatusCode
 	r.TimeStamp = time.Now().UTC().Unix()
 	r.UUID = uuid.New()
+	r.Header.Add(ResponseCachedHeader, strconv.Itoa(int(r.TimeStamp)))
 
 	return nil
 }

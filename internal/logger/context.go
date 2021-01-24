@@ -9,6 +9,7 @@ import (
 )
 
 const (
+	defaultAppName      = "accp"
 	DefaultProviderName = "logger"
 )
 
@@ -31,10 +32,16 @@ func Get(ctx context.Context) *Logger {
 func GetPackageLogger(ctx context.Context, emptyStruct interface{}) zerolog.Logger {
 	log := Get(ctx)
 	if log == nil {
-		accp.RegistrateByName(ctx, DefaultProviderName, NewLogger())
+		log = NewLogger()
+		accp.RegistrateByName(ctx, DefaultProviderName, log)
 	}
 
 	a := meta.Get(ctx)
-	l := log.GetLogger(a.Name, nil)
+	var l *zerolog.Logger
+	if a != nil {
+		l = log.GetLogger(a.Name, nil)
+	} else {
+		l = log.GetLogger(defaultAppName, nil)
+	}
 	return Initialize(l, emptyStruct)
 }

@@ -11,6 +11,10 @@ const (
 )
 
 func Registrate(ctx context.Context, cfg *Config) (context.Context, error) {
+	if Get(ctx) != nil {
+		return ctx, nil
+	}
+
 	if cfg == nil {
 		return ctx, nil
 	}
@@ -25,5 +29,8 @@ func Registrate(ctx context.Context, cfg *Config) (context.Context, error) {
 }
 
 func Get(ctx context.Context) *Client {
-	return accp.GetByName(ctx, ProviderName).(*Client)
+	if v, ok := accp.GetByName(ctx, ProviderName).(*Client); ok {
+		return v
+	}
+	return nil
 }

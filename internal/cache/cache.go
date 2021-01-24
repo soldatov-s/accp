@@ -20,6 +20,10 @@ type Cache struct {
 }
 
 func NewCache(ctx context.Context, cfg *Config, storage external.Storage) *Cache {
+	if cfg.Disabled {
+		return nil
+	}
+
 	return &Cache{
 		Memory:         memory.NewCache(ctx, cfg.Memory),
 		External:       external.NewCache(ctx, cfg.External, storage),

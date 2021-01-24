@@ -22,7 +22,7 @@ func DefaultConfig() *Config {
 	}
 }
 
-func (c *Config) Validate() {
+func (c *Config) SetDefault() {
 	if c.Level == "" {
 		c.Level = "INFO"
 	}

@@ -10,33 +10,25 @@ const (
 	AppItem accp.Item = "app"
 )
 
-func Registrate(ctx context.Context) (context.Context, *ApplicationInfo) {
+func Registrate(ctx context.Context) context.Context {
 	v := Get(ctx)
 	if v != nil {
-		return ctx, v
+		return ctx
 	}
 
-	a := &ApplicationInfo{
-		Name:        "unknown",
-		Version:     "0.0.0",
-		Description: "no description",
-	}
-	return context.WithValue(ctx, AppItem, a), a
+	return context.WithValue(ctx, AppItem, NewApplicationInfo())
 }
 
 func Get(ctx context.Context) *ApplicationInfo {
-	v := ctx.Value(AppItem)
-	if v != nil {
-		return v.(*ApplicationInfo)
+	if v, ok := ctx.Value(AppItem).(*ApplicationInfo); ok {
+		return v
 	}
 	return nil
 }
 
 func SetAppInfo(ctx context.Context, name, builded, hash, version, description string) context.Context {
+	ctx = Registrate(ctx)
 	a := Get(ctx)
-	if a == nil {
-		ctx, a = Registrate(ctx)
-	}
 	a.Name = name
 	a.Builded = builded
 	a.Hash = hash

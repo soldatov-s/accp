@@ -2,22 +2,27 @@ package limits
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/soldatov-s/accp/internal/cache/errors"
 	"github.com/soldatov-s/accp/internal/cache/external"
+)
+
+const (
+	defaultClearLimitPeriod = 1 * time.Second
 )
 
 // Limit is a current state of a limited parameter from http request
 type Limit struct {
-	Counter    int   `json:"counter"`
-	LastAccess int64 `json:"lastaccess"` // Unix time
-
+	Counter    int64     `json:"counter"`
+	LastAccess time.Time `json:"lastaccess"`
 }
 
 func NewLimit() *Limit {
 	return &Limit{
-		Counter:    1,
-		LastAccess: time.Now().Unix(),
+		Counter:    0,
+		LastAccess: time.Now().UTC(),
 	}
 }
 
@@ -35,7 +40,7 @@ type LimitTable struct {
 }
 
 func NewLimitTable(route string, c *Config, cache *external.Cache) *LimitTable {
-	c.Validate()
+	c.SetDefault()
 
 	lt := &LimitTable{
 		pt:       c.PT,
@@ -44,17 +49,19 @@ func NewLimitTable(route string, c *Config, cache *external.Cache) *LimitTable {
 		route:    route,
 	}
 
-	lt.clearTimer = time.AfterFunc(lt.pt, lt.clearTable)
+	// Start clear time every second
+	lt.clearTimer = time.AfterFunc(defaultClearLimitPeriod, lt.clearTable)
 	return lt
 }
 
 func (t *LimitTable) Check(value string, result *bool) error {
+	*result = false
 	if err := t.Inc(value); err != nil {
 		return err
 	}
 
 	if v, ok := t.list.Load(value); ok {
-		if v.(*Limit).Counter >= t.maxCount {
+		if v.(*Limit).Counter > int64(t.maxCount) {
 			*result = true
 		}
 	}
@@ -73,16 +80,16 @@ func (t *LimitTable) Inc(value string) error {
 	}
 
 	if t.cache != nil && !isNew {
-		if err := t.cache.Select(t.route+"_"+value, &v.(*Limit).Counter); err != nil {
+		if err := t.cache.Select(t.route+"_"+value, &v.(*Limit).Counter); err != nil && err != errors.ErrNotFound {
 			return err
 		}
 	}
 
-	if v.(*Limit).Counter >= t.maxCount {
+	if v.(*Limit).Counter > int64(t.maxCount) {
 		return nil
 	}
 
-	v.(*Limit).Counter++
+	atomic.AddInt64(&v.(*Limit).Counter, 1)
 	if t.cache != nil {
 		if err := t.cache.LimitTTL(t.route+"_"+value, t.pt); err != nil {
 			return err
@@ -93,16 +100,15 @@ func (t *LimitTable) Inc(value string) error {
 }
 
 func (t *LimitTable) clearTable() {
+	t.clearTimer.Reset(defaultClearLimitPeriod)
 	timeNow := time.Now().UTC()
 
 	t.list.Range(func(k, v interface{}) bool {
-		if time.Unix(v.(*Limit).LastAccess, 0).UTC().Sub(timeNow) > t.pt {
+		if timeNow.Sub(v.(*Limit).LastAccess) >= t.pt {
 			t.list.Delete(k)
 		}
 		return true
 	})
-
-	t.clearTimer.Reset(t.pt)
 }
 
 func NewLimits(route string, lc MapConfig, cache *external.Cache) map[string]*LimitTable {

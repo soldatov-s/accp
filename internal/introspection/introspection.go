@@ -17,6 +17,8 @@ import (
 
 const (
 	MaxHTTPBodySize = 1 << 20
+
+	authorizationHeader = "authorization"
 )
 
 type empty struct{}
@@ -96,7 +98,7 @@ func (i *Introspect) extractToken(r *http.Request) (string, error) {
 	}
 
 	// If not token not found in query, try get from Authorization header
-	token := r.Header.Get("Authorization")
+	token := r.Header.Get(authorizationHeader)
 
 	splitToken := strings.Split(token, " ")
 	if len(splitToken) < 2 {
@@ -125,6 +127,7 @@ func (i *Introspect) IntrospectRequest(r *http.Request) ([]byte, error) {
 	if len(token) > 8 {
 		i.log.Debug().Msgf("token from request: \"%s\"", token[0:4]+"****"+token[len(token)-4:])
 	} else {
+		// for tests
 		i.log.Debug().Msgf("token from request: \"%s\"", token)
 	}
 
