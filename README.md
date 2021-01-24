@@ -22,6 +22,6 @@ ACCP passes to back service only first request and all next requests wait answer
 ![accp-arhitecture](http://www.plantuml.com/plantuml/proxy?cache=no&src=https://raw.githubusercontent.com/soldatov-s/accp/master/doc/accp.puml)
 
 ## Sequence
-![accp-sequence](http://www.plantuml.com/plantuml/proxy?cache=no&src=https://raw.githubusercontent.com/soldatov-s/accp/doc/master/accp-sequence.puml)
+![accp-sequence](http://www.plantuml.com/plantuml/proxy?cache=no&src=https://raw.githubusercontent.com/soldatov-s/accp/master/doc/accp-sequence.puml)
 
   
