@@ -68,9 +68,10 @@ ACCP отправляет на бэкенд только первый запро
 ACCP конфигурируется полностью через yml файл. Возможно индивидуальное задание настроек для отдельных маршрутов к API, поддерживается наследование для задания общих настроек для группы API с последующим уточнением каких-либо настроек для отдельных обработчиков. Можно исключать отдельные обработчики, чтобы их ответы не кэшировались.
 
 ## Архитектура
-![accp-arhitecture](http://www.plantuml.com/plantuml/proxy?cache=no&src=https://raw.githubusercontent.com/soldatov-s/accp/alfa/doc/accp.puml)
+![accp-arhitecture](http://www.plantuml.com/plantuml/proxy?cache=no&src=https://raw.githubusercontent.com/soldatov-s/accp/master/doc/accp.puml)
 
 ## Диаграмма последовательности
-![accp-sequence](http://www.plantuml.com/plantuml/proxy?cache=no&src=https://raw.githubusercontent.com/soldatov-s/accp/alfa/doc/accp-sequence.puml)
+![accp-sequence](http://www.plantuml.com/plantuml/proxy?cache=no&src=https://raw.githubusercontent.com/soldatov-s/accp/master/doc/accp-sequence.puml)
+
 
     
