@@ -24,6 +24,8 @@ type Config struct {
 	CookieName []string
 	// QueryParamName is a list of query parameter where may be stored access token
 	QueryParamName []string
+	// HeaderName is a list of headers where may be stored access token
+	HeaderName []string
 	// Pool is config for http clients pool
 	Pool *httpclient.Config
 }
@@ -53,5 +55,13 @@ func (c *Config) Validate() error {
 		return errors.EmptyConfigParameter("bodytemplate")
 	}
 
+	if len(c.CookieName) == 0 && len(c.HeaderName) == 0 && len(c.QueryParamName) == 0 {
+		return errors.EmptyConfigParameter("acces-token sources")
+	}
+
 	return nil
+}
+
+func (c *Config) SetDefault() {
+	c.Pool.SetDefault()
 }

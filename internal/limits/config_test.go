@@ -10,8 +10,8 @@ import (
 func TestSetDefault(t *testing.T) {
 	c := &Config{}
 	c.SetDefault()
-	require.Equal(t, defaultCounter, c.Counter)
-	require.Equal(t, defaultPT, c.PT)
+	require.Equal(t, defaultCounter, c.MaxCounter)
+	require.Equal(t, defaultTTL, c.TTL)
 }
 
 func TestMerge(t *testing.T) {
@@ -24,24 +24,24 @@ func TestMerge(t *testing.T) {
 		{
 			name:           "src is nil",
 			srcConfig:      nil,
-			targetConfig:   &Config{PT: 1 * time.Second, Counter: 1, Cookie: []string{"test1", "test2"}, Header: []string{"test1", "test2"}},
-			expectedConfig: &Config{PT: 1 * time.Second, Counter: 1, Cookie: []string{"test1", "test2"}, Header: []string{"test1", "test2"}},
+			targetConfig:   &Config{TTL: 1 * time.Second, MaxCounter: 1, Cookie: []string{"test1", "test2"}, Header: []string{"test1", "test2"}},
+			expectedConfig: &Config{TTL: 1 * time.Second, MaxCounter: 1, Cookie: []string{"test1", "test2"}, Header: []string{"test1", "test2"}},
 		},
 		{
 			name:           "target is nil",
-			srcConfig:      &Config{PT: 1 * time.Second, Counter: 1, Cookie: []string{"test1", "test2"}, Header: []string{"test1", "test2"}},
+			srcConfig:      &Config{TTL: 1 * time.Second, MaxCounter: 1, Cookie: []string{"test1", "test2"}, Header: []string{"test1", "test2"}},
 			targetConfig:   nil,
-			expectedConfig: &Config{PT: 1 * time.Second, Counter: 1, Cookie: []string{"test1", "test2"}, Header: []string{"test1", "test2"}},
+			expectedConfig: &Config{TTL: 1 * time.Second, MaxCounter: 1, Cookie: []string{"test1", "test2"}, Header: []string{"test1", "test2"}},
 		},
 		{
 			name:         "target is not nil",
-			srcConfig:    &Config{PT: 1 * time.Second, Counter: 1, Cookie: []string{"test1", "test2"}, Header: []string{"test1", "test2"}},
-			targetConfig: &Config{PT: 2 * time.Second, Counter: 2, Cookie: []string{"test3"}, Header: []string{"test3"}},
+			srcConfig:    &Config{TTL: 1 * time.Second, MaxCounter: 1, Cookie: []string{"test1", "test2"}, Header: []string{"test1", "test2"}},
+			targetConfig: &Config{TTL: 2 * time.Second, MaxCounter: 2, Cookie: []string{"test3"}, Header: []string{"test3"}},
 			expectedConfig: &Config{
-				PT:      2 * time.Second,
-				Counter: 2,
-				Cookie:  []string{"test1", "test2", "test3"},
-				Header:  []string{"test1", "test2", "test3"},
+				TTL:        2 * time.Second,
+				MaxCounter: 2,
+				Cookie:     []string{"test1", "test2", "test3"},
+				Header:     []string{"test1", "test2", "test3"},
 			},
 		},
 	}
@@ -57,6 +57,12 @@ func TestMerge(t *testing.T) {
 
 func TestNewMapConfig(t *testing.T) {
 	c := NewMapConfig()
+	require.NotNil(t, c)
+}
+
+func TestMapConfig_SetDefault(t *testing.T) {
+	c := NewMapConfig()
+	c.SetDefault()
 	require.NotNil(t, c)
 	_, ok := c["token"]
 	require.True(t, ok)

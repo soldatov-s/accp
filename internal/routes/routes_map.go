@@ -69,13 +69,3 @@ func (m MapRoutes) AddRouteByPath(ctx context.Context, path, routeName string, p
 
 	return previousLevelRoutes[lastPartOfRoute], nil
 }
-
-func (m MapRoutes) AddExludedRouteByPath(ctx context.Context, path, routeName string, params *Parameters) (*Route, error) {
-	route, err := m.AddRouteByPath(ctx, path, routeName, params)
-	if err != nil {
-		return nil, err
-	}
-
-	route.excluded = true
-	return route, nil
-}

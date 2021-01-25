@@ -1,70 +1,133 @@
 logger:
+  # colorize log output
   nocoloredoutput: true
+  # log with trace info
   withtrace: false
+  # verbose level: debug, warn, error, fatal, info
   level: info
 
+# introspection service
 introspector:
+  # introspector dsn
   dsn: http://192.168.100.48:30611
+  # endpoint with introspection handler
   endpoint: /oauth2/introspect
+  # accepted content-type
   contenttype: application/x-www-form-urlencoded
+  # request method for introspection
   method: POST
+  # marker in result that introspection is good
   validmarker: '"active":true'
+  # the body template for sending access-token to introspection service
   bodytemplate: "token_type_hint=access_token&token={{.Token}}"
+  # trimed fields in aswer from introspection service
+  # the answer will be added in header of request before it will be passed to backend
+  # not all fields from answer must be added in request
   trimedfilds: ["exp", "iat"]
+  # the cookie name where can be find access-token
   cookiename: ["access-token"]
+  # the query param where can be find access-token
   queryparamname: ["access_token"]
-  poolsize: 50
-  pooltimeout: 10s
+  # the header name where can be find access-token
+  headername: ["authorization"]
+  # the options of http-clients pool
+  pool:
+    # size of pool, default 20
+    size: 50
+    # response timeout for http-client in pool, default 5s
+    timeout: 10s
 
+# external cache
 redis: # Redis
+  # redis dsn
   dsn: redis://redis:6379
   minidleconnections: 10
   maxopenedconnections: 30
   maxconnectionlifetime: 30s
 
+# queue for passing requests to backend for some business metrics
 rabbitmq:
+  # rabbitmq dsn
   dsn: amqp://guest:guest@rabbitmq:5672
   backoffpolicy: [2s, 5s, 10s, 15s, 20s, 25s]
+  # echange name for rabbitmq
   exchangename: testout.events.dev
 
 admin:
+  # interface:port for admin, default 0.0.0.0:9100
   listen: 0.0.0.0:9100
-  pprof: true
+  # pprof:
+  # - true - enable profiling
+  # - false - disable profiling
+  pprof: false
 
 proxy:
+  # interface:port for proxy, default 0.0.0.0:9000
   listen: 0.0.0.0:9000
-  hydration:
-    requestid: true
+  # hydrate requestid
+  requestid: true
+  # proxied routes
   routes:
+    # proxied route
     /api/v1/:
+      # route parameters
       parameters:
-        introspect: true
-        introspecthydration: plaintext # add result of introspection as plaintext in header
-        dsn: http://192.168.100.48:30637
-        methods: [GET, PUT, POST]
+        # format for adding result of introspection in request header:
+        # - plaintext - as plaintext in header
+        # - base64 - as plaintext in header
+        # - nothing or emty - not adds result of introspection to request header
+        introspecthydration: plaintext
+        dsn: http://localhost:10000
+        # allowed methods, default only GET
+        methods: [GET]
+        # the options of http-clients pool
         pool:
+          # size of pool
           size: 20
+          # response timeout for http-client in pool
           timeout: 10s
-        routkey: V1 # rabbitmq rouykey
+        # rabbitmq routkey for this proxy-route, default empty, if routkey is empty it will not send to queue
+        routkey: V1
+      # proxied subroutes
       routes:
-        # subroutes
+        # proxied subroute
         users:
+          # subroute parameters, they overwrite parent parameters
           parameters:
+            # ratelimits, default is empty
             limits:
+              # name of ratelimit
               token:
-                counter: 1000
-                pt: 1m
+                # possible headers with this ratelimit
+                header: [authorization]
+                # limits count of request to API, default 1000
+                maxcounter: 1000
+                # limits period of requests to API, default 1m
+                ttl: 1m
+              # name of ratelimit
               ip:
+                # possible headers with this ratelimit
+                header: [x-forwarded-for]
+                # limits count of request to API, default 1000
                 counter: 1000
-                pt: 1m
+                # limits period of requests to API, default 1m
+                ttl: 1m
               deviceid:
+                # possible headers with this ratelimit
                 header: [device-id]
+                # possible cookies with this ratelimit
                 cookie: [device-id]
+                # limits count of request to API, default 1000
                 counter: 1000
-                pt: 1m # the period time for cache auto update
+                # limits period of requests to API, default 1m
+                ttl: 1m
+            # the config for automatic refreshing cache
             refresh:
-              count: 100
+              # the maximum of requests after which will be refreshed cache
+              count:
+              # the refresh period
               time: 2m
+            # the config for cache
             cache:
               memory:
                 ttl: 30s
@@ -73,36 +136,17 @@ proxy:
                 keyprefix: users_
                 ttl: 60s
                 ttlerr: 3s
-    /api/v1/users:
-      parameters:
-        introspect: true
-        introspecthydration: plaintext # add result of introspection as plaintext in header
-        dsn: http://192.168.100.48:30637
-        pool:
-          size: 20
-          timeout: 10s
-        routkey: USERS
-        limits:
-          token:
-            counter: 1000
-            pt: 1m
-          ip:
-            counter: 1000
-            pt: 1m
-          deviceid:
-            header: device-id
-            cookie: device-id
-            counter: 1000
-            pt: 1m
-        refresh:
-          count: 100
-          time: 2m
-        cache:
-          memory:
-            ttl: 30s
-            ttlerr: 3s
-          external:
-            ttl: 60s
-            ttlerr: 3s
-  excluded:
-    /api/v2/:
+            # may be added proxied subroutes
+            # routes:
+            #  parameters:
+            #  ...
+  # proxied route
+  /api/v2/:
+    # route parameters
+    parameters:
+      # notintrospect is a flag that introspection for this route disabled
+      notintrospect: true
+      # the config for cache
+      cache:
+        # disabled is a flag that cache disabled
+        disabled: true

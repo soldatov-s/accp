@@ -1,558 +1,301 @@
 package httpproxy
 
-// import (
-// 	"io/ioutil"
-// 	"math/rand"
-// 	"net/http"
-// 	"net/http/httptest"
-// 	"sync"
-// 	"testing"
-// 	"time"
-
-// 	"github.com/soldatov-s/accp/internal/cache/external"
-// 	context "github.com/soldatov-s/accp/internal/ctx"
-// 	"github.com/soldatov-s/accp/internal/introspection"
-// 	"github.com/soldatov-s/accp/internal/publisher"
-// 	"github.com/soldatov-s/accp/internal/rabbitmq"
-// 	externalcache "github.com/soldatov-s/accp/internal/redis"
-// 	"github.com/soldatov-s/accp/x/dockertest"
-// 	testhelpers "github.com/soldatov-s/accp/x/test_helpers"
-// 	testProxyHelpers "github.com/soldatov-s/accp/x/test_helpers/proxy"
-// 	rabbitMQConsumer "github.com/soldatov-s/accp/x/test_helpers/rabbitmq"
-// 	resilience "github.com/soldatov-s/accp/x/test_helpers/resilence"
-// 	"github.com/spf13/viper"
-// 	"github.com/stretchr/testify/require"
-// )
-
-// func initExternalCache(t *testing.T) *externalcache.RedisClient {
-// 	lc, err := testhelpers.LoadTestConfigLogger()
-// 	require.Nil(t, err)
-
-// 	ctx := context.NewContext()
-// 	ctx.InitilizeLogger(lc)
-
-// 	dsn, err := dockertest.RunRedis()
-// 	require.Nil(t, err)
-
-// 	t.Logf("Connecting to redis: %s", dsn)
-
-// 	ec := &externalcache.RedisConfig{
-// 		DSN:                   dsn,
-// 		MinIdleConnections:    10,
-// 		MaxOpenedConnections:  30,
-// 		MaxConnectionLifetime: 30 * time.Second,
-// 	}
-
-// 	var externalStorage *externalcache.RedisClient
-// 	err = resilience.Retry(
-// 		t,
-// 		time.Second*5,
-// 		time.Minute*5,
-// 		func() (err error) {
-// 			externalStorage, err = externalcache.NewRedisClient(ctx, ec)
-// 			return err
-// 		},
-// 	)
-// 	require.Nil(t, err)
-// 	require.NotNil(t, externalStorage)
-// 	t.Logf("Connected to redis: %s", dsn)
-
-// 	return externalStorage
-// }
-
-// func initPublisher(t *testing.T) (string, publisher.Publisher) {
-// 	lc, err := testhelpers.LoadTestConfigLogger()
-// 	require.Nil(t, err)
-
-// 	ctx := context.NewContext()
-// 	ctx.InitilizeLogger(lc)
-
-// 	dsn, err := dockertest.RunRabbitMQ()
-// 	require.Nil(t, err)
-
-// 	t.Logf("Connecting to rabbitmq: %s", dsn)
-
-// 	ec := &rabbitmq.PublisherConfig{
-// 		DSN:           dsn,
-// BackoffPolicy: []time.Duration{
-// 	2 * time.Second,
-// 	5 * time.Second,
-// 	10 * time.Second,
-// 	15 * time.Second,
-// 	20 * time.Second,
-// 	25 * time.Second,
-// },
-// 		ExchangeName:  "testout.events.dev",
-// 	}
-
-// 	var pub publisher.Publisher
-// 	err = resilience.Retry(
-// 		t,
-// 		time.Second*5,
-// 		time.Minute*5,
-// 		func() (err error) {
-// 			pub, err = rabbitmq.NewPublisher(ctx, ec)
-// 			return err
-// 		},
-// 	)
-// 	require.Nil(t, err)
-// 	require.NotNil(t, pub)
-// 	t.Logf("Connected to rabbitmq: %s", dsn)
-
-// 	return dsn, pub
-// }
-
-// func initProxy(t *testing.T) *HTTPProxy {
-// 	err := testhelpers.LoadTestYAML()
-// 	require.Nil(t, err)
-
-// 	lc, err := testhelpers.LoadTestConfigLogger()
-// 	require.Nil(t, err)
-
-// 	ctx := context.NewContext()
-// 	ctx.InitilizeLogger(lc)
-
-// 	ic, err := testhelpers.LoadTestConfigIntrospector()
-// 	require.Nil(t, err)
-
-// 	i, err := introspection.NewIntrospector(ctx, ic)
-// 	require.Nil(t, err)
-
-// 	var pc *Config
-// 	err = viper.UnmarshalKey("proxy", &pc)
-// 	require.Nil(t, err)
-
-// 	p, err := NewHTTPProxy(ctx, pc, i, nil, nil)
-// 	require.Nil(t, err)
-
-// 	return p
-// }
-
-// func TestNewHTTPProxy(t *testing.T) {
-// 	initProxy(t)
-// }
-
-// func TestHTTPProxy_FindRouteByPath(t *testing.T) {
-// 	p := initProxy(t)
-
-// 	route := p.routes.FindRouteByPath("/api/v1/users")
-// 	require.NotNil(t, route)
-
-// 	t.Logf("route value %+v", route)
-// }
-
-// func TestHTTPProxy_FindRouteByHTTPRequest(t *testing.T) {
-// 	p := initProxy(t)
-
-// 	r, err := http.NewRequest("GET", "/api/v1/users", nil)
-// 	require.Nil(t, err)
-
-// 	route := p.routes.FindRouteByHTTPRequest(r)
-// 	require.NotNil(t, route)
-
-// 	t.Logf("route value %+v", route)
-// }
-
-// func TestHTTPProxy_FindExcluededRouteByHTTPRequest(t *testing.T) {
-// 	p := initProxy(t)
-
-// 	r, err := http.NewRequest("POST", "/api/v1/users/search", nil)
-// 	require.Nil(t, err)
-
-// 	route := p.routes.FindRouteByHTTPRequest(r)
-// 	require.NotNil(t, route)
-
-// 	t.Logf("route value %+v", route)
-// }
-
-// // func TestHTTPProxy_HydrationID(t *testing.T) {
-// // 	p := initProxy(t)
-
-// // 	tests := []struct {
-// // 		name                string
-// // 		testHeaderValue     string
-// // 		expectedHeaderValue string
-// // 	}{
-// // 		{
-// // 			name:                "x-request-id exist",
-// // 			testHeaderValue:     "abc123",
-// // 			expectedHeaderValue: "abc123",
-// // 		},
-// // 		{
-// // 			name:            "x-request-id not exist",
-// // 			testHeaderValue: "",
-// // 		},
-// // 	}
-// // 	for _, tt := range tests {
-// // 		var headerValue string
-// // 		tt := tt
-// // 		t.Run(tt.name, func(t *testing.T) {
-// // 			r, err := http.NewRequest("GET", "/api/v1/users", nil)
-// // 			require.Nil(t, err)
-// // 			r.Header.Add("x-request-id", tt.testHeaderValue)
-
-// // 			if tt.testHeaderValue != "" {
-// // 				p.HydrationID(r)
-// // 				headerValue = r.Header.Get("x-request-id")
-// // 				assert.Equal(t, headerValue, tt.expectedHeaderValue)
-// // 			} else {
-// // 				p.HydrationID(r)
-// // 				headerValue = r.Header.Get("x-request-id")
-// // 				assert.NotEqual(t, headerValue, "")
-// // 			}
-// // 			t.Logf("x-request-id is %s", headerValue)
-// // 		})
-// // 	}
-// // }
-
-// func TestHTTPProxy_DefaultHandler(t *testing.T) {
-// 	server := testProxyHelpers.FakeBackendService(t, "localhost:9090")
-// 	server.Start()
-// 	defer server.Close()
-
-// 	p := initProxy(t)
-
-// 	r, err := http.NewRequest("POST", "/api/v1/users/search", nil)
-// 	require.Nil(t, err)
-
-// 	route := p.routes.FindRouteByHTTPRequest(r)
-// 	require.NotNil(t, route)
-
-// 	t.Logf("route value %+v", route)
-
-// 	w := httptest.NewRecorder()
-// 	route.NotCached(w, r)
-
-// 	resp := w.Result()
-// 	body, _ := ioutil.ReadAll(resp.Body)
-// 	defer resp.Body.Close()
-
-// 	t.Log(resp.StatusCode)
-// 	t.Log(resp.Header.Get("Content-Type"))
-// 	t.Log(string(body))
-// }
-
-// func TestHTTPProxy_GetHandler(t *testing.T) {
-// 	server := testProxyHelpers.FakeBackendService(t, "localhost:9090")
-// 	server.Start()
-// 	defer server.Close()
-
-// 	p := initProxy(t)
-
-// 	r, err := http.NewRequest("GET", "/api/v1/users", nil)
-// 	require.Nil(t, err)
-
-// 	route := p.routes.FindRouteByHTTPRequest(r)
-// 	require.NotNil(t, route)
-
-// 	t.Logf("route value %+v", route)
-
-// 	w := httptest.NewRecorder()
-// 	route.CachedHandler(w, r)
-
-// 	resp := w.Result()
-// 	body, _ := ioutil.ReadAll(resp.Body)
-// 	defer resp.Body.Close()
-
-// 	t.Log(resp.StatusCode)
-// 	t.Log(resp.Header.Get("Content-Type"))
-// 	t.Log(string(body))
-
-// 	t.Log("take answer from cache")
-// 	w = httptest.NewRecorder()
-// 	route.CachedHandler(w, r)
-
-// 	resp = w.Result()
-// 	body, _ = ioutil.ReadAll(resp.Body)
-// 	defer resp.Body.Close()
-
-// 	t.Log(resp.StatusCode)
-// 	t.Log(resp.Header.Get("Content-Type"))
-// 	t.Log(string(body))
-// }
-
-// func TestHTTPProxy_GetHandlerExternalCache(t *testing.T) {
-// 	server := testProxyHelpers.FakeBackendService(t, "localhost:9090")
-// 	server.Start()
-// 	defer server.Close()
-
-// 	p := initProxy(t)
-
-// 	r, err := http.NewRequest("GET", "/api/v1/users", nil)
-// 	require.Nil(t, err)
-
-// 	route := p.routes.FindRouteByHTTPRequest(r)
-// 	require.NotNil(t, route)
-
-// 	lc, err := testhelpers.LoadTestConfigLogger()
-// 	require.Nil(t, err)
-
-// 	ctx := context.NewContext()
-// 	ctx.InitilizeLogger(lc)
-
-// 	route.Cache.External, err = external.NewCache(ctx, route.Parameters.Cache.External, initExternalCache(t))
-// 	require.Nil(t, err)
-
-// 	w := httptest.NewRecorder()
-// 	route.CachedHandler(w, r)
-
-// 	resp := w.Result()
-// 	body, _ := ioutil.ReadAll(resp.Body)
-// 	defer resp.Body.Close()
-
-// 	t.Log(resp.StatusCode)
-// 	t.Log(resp.Header.Get("Content-Type"))
-// 	t.Log(string(body))
-
-// 	// Sleep, inmemory cache invalidates
-// 	t.Log("sleep, inmemory cache invalidates")
-// 	time.Sleep(5 * time.Second)
-
-// 	r, err = http.NewRequest("GET", "/api/v1/users", nil)
-// 	require.Nil(t, err)
-
-// 	t.Log("take answer from cache")
-// 	w = httptest.NewRecorder()
-// 	route.CachedHandler(w, r)
-
-// 	resp = w.Result()
-// 	body, _ = ioutil.ReadAll(resp.Body)
-// 	defer resp.Body.Close()
-
-// 	t.Log(resp.StatusCode)
-// 	t.Log(resp.Header.Get("Content-Type"))
-// 	t.Log(string(body))
-
-// 	dockertest.KillAllDockers()
-// }
-
-// func TestMultipleClienRequests(t *testing.T) {
-// 	workers := 10
-
-// 	barrier := make(chan struct{})
-// 	errorsCh := make(chan error, workers)
-
-// 	server := testProxyHelpers.FakeBackendService(t, "localhost:9090")
-// 	server.Start()
-// 	defer server.Close()
-
-// 	p := initProxy(t)
-
-// 	r, err := http.NewRequest("GET", "/api/v1/users", nil)
-// 	require.Nil(t, err)
-
-// 	route := p.routes.FindRouteByHTTPRequest(r)
-// 	require.NotNil(t, route)
-
-// 	var wg sync.WaitGroup
-// 	go func() {
-// 		for w := 0; w < workers; w++ {
-// 			wg.Add(1)
-// 			go func() {
-// 				defer wg.Done()
-// 				// nolint
-// 				time.Sleep(time.Duration(rand.Intn(100)) * time.Millisecond)
-// 				// all workers will block here until the for loop above has launched all the worker go-routines
-// 				// this is to ensure we fire all the workers off at the same
-// 				<-barrier
-
-// 				t.Log("take answer from cache")
-// 				w := httptest.NewRecorder()
-// 				route.CachedHandler(w, r)
-
-// 				resp := w.Result()
-// 				body, _ := ioutil.ReadAll(resp.Body)
-// 				defer resp.Body.Close()
-
-// 				t.Log(resp.StatusCode)
-// 				t.Log(resp.Header.Get("Content-Type"))
-// 				t.Log(string(body))
-
-// 				errorsCh <- err
-// 			}()
-// 		}
-
-// 		// wait until all workers have completed their work
-// 		wg.Wait()
-// 		close(errorsCh)
-// 	}()
-
-// 	// let the race begin!
-// 	// all worker go-routines will now attempt to hit the "CachedHandler" method
-// 	close(barrier)
-
-// 	var successCount int
-// 	for err := range errorsCh {
-// 		if err != nil {
-// 			t.Errorf("failed: %s", err)
-// 		} else {
-// 			successCount++
-// 		}
-// 	}
-// }
-
-// func TestHTTPProxy_GetHandlerSendMessageToQueue(t *testing.T) {
-// 	server := testProxyHelpers.FakeBackendService(t, "localhost:9090")
-// 	server.Start()
-// 	defer server.Close()
-
-// 	p := initProxy(t)
-
-// 	r, err := http.NewRequest("GET", "/api/v1/users", nil)
-// 	require.Nil(t, err)
-
-// 	route := p.routes.FindRouteByHTTPRequest(r)
-// 	require.NotNil(t, route)
-
-// 	lc, err := testhelpers.LoadTestConfigLogger()
-// 	require.Nil(t, err)
-
-// 	ctx := context.NewContext()
-// 	ctx.InitilizeLogger(lc)
-
-// 	var dsn string
-// 	dsn, route.Publisher = initPublisher(t)
-
-// 	consum, err := rabbitMQConsumer.CreateConsumer(dsn)
-// 	require.Nil(t, err)
-// 	var wg sync.WaitGroup
-// 	wg.Add(1)
-// 	go func() {
-// 		msgs, err1 := consum.StartConsume("testout.events.dev", "test.queue", route.Parameters.RouteKey, "tests")
-// 		require.Nil(t, err1)
-// 		wg.Done()
-
-// 		for d := range msgs {
-// 			t.Logf("Received a message: %s", d.Body)
-// 			require.Equal(t, []byte(`{"URL":"http://localhost:9090/api/v1/users","Method":"GET","Body":"","Header":{}}`), d.Body)
-// 			_ = d.Ack(true)
-// 		}
-// 	}()
-
-// 	wg.Wait()
-
-// 	w := httptest.NewRecorder()
-// 	route.CachedHandler(w, r)
-
-// 	resp := w.Result()
-// 	body, _ := ioutil.ReadAll(resp.Body)
-// 	defer resp.Body.Close()
-
-// 	t.Log(resp.StatusCode)
-// 	t.Log(resp.Header.Get("Content-Type"))
-// 	t.Log(string(body))
-
-// 	t.Log("take answer from cache")
-// 	w = httptest.NewRecorder()
-// 	route.CachedHandler(w, r)
-
-// 	resp = w.Result()
-// 	body, _ = ioutil.ReadAll(resp.Body)
-// 	defer resp.Body.Close()
-
-// 	t.Log(resp.StatusCode)
-// 	t.Log(resp.Header.Get("Content-Type"))
-// 	t.Log(string(body))
-
-// 	err = route.Publisher.(*rabbitmq.Publish).Shutdown()
-// 	require.Nil(t, err)
-
-// 	dockertest.KillAllDockers()
-// }
-
-// func TestHTTPProxy_Refresh(t *testing.T) {
-// 	server := testProxyHelpers.FakeBackendService(t, "localhost:9090")
-// 	server.Start()
-// 	defer server.Close()
-
-// 	p := initProxy(t)
-
-// 	r, err := http.NewRequest("GET", "/api/v1/users", nil)
-// 	require.Nil(t, err)
-
-// 	route := p.routes.FindRouteByHTTPRequest(r)
-// 	require.NotNil(t, route)
-
-// 	t.Logf("route value %+v", route)
-
-// 	w := httptest.NewRecorder()
-// 	route.CachedHandler(w, r)
-
-// 	resp := w.Result()
-// 	body, _ := ioutil.ReadAll(resp.Body)
-// 	defer resp.Body.Close()
-
-// 	t.Log(resp.StatusCode)
-// 	t.Log(resp.Header.Get("Content-Type"))
-// 	t.Log(string(body))
-
-// 	r, err = http.NewRequest("GET", "/api/v1/users", nil)
-// 	require.Nil(t, err)
-
-// 	w = httptest.NewRecorder()
-// 	route.CachedHandler(w, r)
-
-// 	resp = w.Result()
-// 	body, _ = ioutil.ReadAll(resp.Body)
-// 	defer resp.Body.Close()
-
-// 	t.Log(resp.StatusCode)
-// 	t.Log(resp.Header.Get("Content-Type"))
-// 	t.Log(string(body))
-
-// 	r, err = http.NewRequest("GET", "/api/v1/users", nil)
-// 	require.Nil(t, err)
-
-// 	w = httptest.NewRecorder()
-// 	route.CachedHandler(w, r)
-
-// 	resp = w.Result()
-// 	body, _ = ioutil.ReadAll(resp.Body)
-// 	defer resp.Body.Close()
-
-// 	t.Log(resp.StatusCode)
-// 	t.Log(resp.Header.Get("Content-Type"))
-// 	t.Log(string(body))
-
-// 	r, err = http.NewRequest("GET", "/api/v1/users", nil)
-// 	require.Nil(t, err)
-
-// 	w = httptest.NewRecorder()
-// 	route.CachedHandler(w, r)
-
-// 	resp = w.Result()
-// 	body, _ = ioutil.ReadAll(resp.Body)
-// 	defer resp.Body.Close()
-
-// 	t.Log(resp.StatusCode)
-// 	t.Log(resp.Header.Get("Content-Type"))
-// 	t.Log(string(body))
-
-// 	w = httptest.NewRecorder()
-// 	route.CachedHandler(w, r)
-
-// 	resp = w.Result()
-// 	body, _ = ioutil.ReadAll(resp.Body)
-// 	defer resp.Body.Close()
-
-// 	t.Log(resp.StatusCode)
-// 	t.Log(resp.Header.Get("Content-Type"))
-// 	t.Log(string(body))
-
-// 	time.Sleep(1 * time.Second)
-
-// 	r, err = http.NewRequest("GET", "/api/v1/users", nil)
-// 	require.Nil(t, err)
-
-// 	w = httptest.NewRecorder()
-// 	route.CachedHandler(w, r)
-
-// 	resp = w.Result()
-// 	bodyAfterRefresh, _ := ioutil.ReadAll(resp.Body)
-// 	defer resp.Body.Close()
-
-// 	require.NotEqual(t, body, bodyAfterRefresh)
-// 	t.Log(resp.StatusCode)
-// 	t.Log(resp.Header.Get("Content-Type"))
-// 	t.Log(string(bodyAfterRefresh))
-// }
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	"github.com/soldatov-s/accp/internal/cache"
+	"github.com/soldatov-s/accp/internal/cache/external"
+	"github.com/soldatov-s/accp/internal/cache/memory"
+	"github.com/soldatov-s/accp/internal/httpclient"
+	"github.com/soldatov-s/accp/internal/httputils"
+	"github.com/soldatov-s/accp/internal/introspection"
+	"github.com/soldatov-s/accp/internal/logger"
+	"github.com/soldatov-s/accp/internal/meta"
+	"github.com/soldatov-s/accp/internal/rabbitmq"
+	"github.com/soldatov-s/accp/internal/redis"
+	"github.com/soldatov-s/accp/internal/routes"
+	"github.com/soldatov-s/accp/internal/routes/refresh"
+	"github.com/soldatov-s/accp/x/dockertest"
+	testproxyhelpers "github.com/soldatov-s/accp/x/test_helpers/proxy"
+	"github.com/soldatov-s/accp/x/test_helpers/resilience"
+	"github.com/stretchr/testify/require"
+)
+
+const (
+	testExchangeName = "accp.test.events"
+	testPoolSize     = 10
+	testPoolTimeout  = 5 * time.Second
+	testLimitCounter = 1
+	testLimitPT      = 3 * time.Second
+	testRouteKey     = "ACCP_TEST"
+	testRequestID    = "123456789"
+)
+
+func initApp(ctx context.Context) context.Context {
+	return meta.SetAppInfo(ctx, "accp", "", "", "", "test")
+}
+
+func initLogger(ctx context.Context) context.Context {
+	// Registrate logger
+	logCfg := &logger.Config{
+		Level:           logger.LoggerLevelDebug,
+		NoColoredOutput: true,
+		WithTrace:       false,
+	}
+	ctx = logger.RegistrateAndInitilize(ctx, logCfg)
+
+	return ctx
+}
+
+func initPublisherConfig() *rabbitmq.Config {
+	return &rabbitmq.Config{
+		ExchangeName: testExchangeName,
+	}
+}
+
+// nolint : gocritic
+func initPublish(ctx context.Context, t *testing.T) (context.Context, string) {
+	dsn, err := dockertest.RunRabbitMQ()
+	require.Nil(t, err)
+
+	cfg := initPublisherConfig()
+	cfg.DSN = dsn
+
+	t.Logf("connecting to rabbitmq: %s", dsn)
+	err = resilience.Retry(
+		t,
+		time.Second*5,
+		time.Minute*5,
+		func() (err error) {
+			ctx, err = rabbitmq.Registrate(ctx, cfg)
+			require.Nil(t, err)
+			c := rabbitmq.Get(ctx)
+			return c.Start()
+		},
+	)
+	require.Nil(t, err)
+
+	t.Logf("connected to rabbitmq: %s", dsn)
+
+	return ctx, dsn
+}
+
+func initExternalCacheConfig() *redis.Config {
+	return &redis.Config{
+		MinIdleConnections:    10,
+		MaxOpenedConnections:  30,
+		MaxConnectionLifetime: 30 * time.Second,
+	}
+}
+
+func initExternalCache(ctx context.Context, t *testing.T) context.Context {
+	dsn, err := dockertest.RunRedis()
+	require.Nil(t, err)
+
+	cfg := initExternalCacheConfig()
+	cfg.DSN = dsn
+
+	t.Logf("connecting to redis: %s", dsn)
+	err = resilience.Retry(
+		t,
+		time.Second*5,
+		time.Minute*5,
+		func() (err error) {
+			ctx, err = redis.Registrate(ctx, cfg)
+			require.Nil(t, err)
+			c := redis.Get(ctx)
+			return c.Start()
+		},
+	)
+	require.Nil(t, err)
+
+	t.Logf("connected to redis: %s", dsn)
+
+	return ctx
+}
+
+func initPool() *httpclient.Config {
+	return &httpclient.Config{
+		Size:    testPoolSize,
+		Timeout: testPoolTimeout,
+	}
+}
+
+func initIntrospectorConfig() *introspection.Config {
+	return &introspection.Config{
+		DSN:            testproxyhelpers.DefaultFakeIntrospectorURL,
+		Endpoint:       testproxyhelpers.DefaultFakeIntrospectorEndpoint,
+		ContentType:    testproxyhelpers.DefaultFakeIntrospectorContentType,
+		Method:         testproxyhelpers.DefaultFakeIntrospectorMethod,
+		ValidMarker:    testproxyhelpers.DefaultFakeIntrospectorValidMarker,
+		BodyTemplate:   testproxyhelpers.DefaultFakeIntrospectorBodyTemplate,
+		CookieName:     testproxyhelpers.DefaultFakeIntrospectorCookiesName(),
+		QueryParamName: testproxyhelpers.DefaultFakeIntrospectorQueryParamsName(),
+		Pool:           initPool(),
+	}
+}
+
+func initIntrospector(ctx context.Context, t *testing.T) context.Context {
+	cfg := initIntrospectorConfig()
+	ctx, err := introspection.Registrate(ctx, cfg)
+	require.Nil(t, err)
+	return ctx
+}
+
+func initParameters() *routes.Parameters {
+	parameters := &routes.Parameters{
+		DSN: testproxyhelpers.DefaultFakeServiceURL,
+		Cache: &cache.Config{
+			Memory: &memory.Config{
+				TTL:    5 * time.Second,
+				TTLErr: 3 * time.Second,
+			},
+			External: &external.Config{
+				TTL:       10 * time.Second,
+				TTLErr:    5 * time.Second,
+				KeyPrefix: "accp_test_",
+			},
+		},
+		Pool: &httpclient.Config{
+			Size:    20,
+			Timeout: 10 * time.Second,
+		},
+		Refresh: &refresh.Config{
+			MaxCount: 15,
+			Time:     3 * time.Second,
+		},
+		NotIntrospect: false,
+		RouteKey:      testRouteKey,
+	}
+
+	parameters.SetDefault()
+	parameters.Limits.SetDefault()
+
+	// Set limit config for token
+	parameters.Limits["token"].MaxCounter = testLimitCounter
+	parameters.Limits["token"].TTL = testLimitPT
+
+	return parameters
+}
+
+// nolint : deadcode
+func initRoute(ctx context.Context, t *testing.T) *routes.Route {
+	params := initParameters()
+	r := routes.NewRoute(ctx, "/api/v1/users", params)
+
+	return r
+}
+
+func initConfig() *Config {
+	params := initParameters()
+	c := &Config{
+		Listen:   defaultListen,
+		Routes:   make(routes.MapConfig),
+		Excluded: make(routes.MapConfig),
+	}
+	c.Routes["/api/v1/users"] = &routes.Config{
+		Parameters: params,
+	}
+
+	c.RequestID = true
+
+	return c
+}
+
+func initHTTPProxy(t *testing.T) *HTTPProxy {
+	ctx := context.Background()
+	ctx = initApp(ctx)
+	ctx = initLogger(ctx)
+	ctx, _ = initPublish(ctx, t)
+	ctx = initExternalCache(ctx, t)
+	ctx = initIntrospector(ctx, t)
+
+	cfg := initConfig()
+	p, err := NewHTTPProxy(ctx, cfg)
+	require.Nil(t, err)
+
+	return p
+}
+
+func TestNewHTTPProxy(t *testing.T) {
+	defer dockertest.KillAllDockers()
+	_ = initHTTPProxy(t)
+}
+
+func TestHydrationID(t *testing.T) {
+	defer dockertest.KillAllDockers()
+	p := initHTTPProxy(t)
+
+	tests := []struct {
+		name     string
+		testFunc func()
+	}{
+		{
+			name: "test empty requestID",
+			testFunc: func() {
+				nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					requestID := httputils.GetRequestID(r)
+					require.NotEmpty(t, requestID)
+
+					t.Logf("request id: %s", requestID)
+				})
+
+				handlerToTest := p.hydrationID(nextHandler)
+				req := httptest.NewRequest("GET", testproxyhelpers.DefaultFakeServiceURL, nil)
+				handlerToTest.ServeHTTP(httptest.NewRecorder(), req)
+			},
+		},
+		{
+			name: "test not empty requestID",
+			testFunc: func() {
+				nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					requestID := httputils.GetRequestID(r)
+					require.NotEmpty(t, requestID)
+					require.Equal(t, testRequestID, requestID)
+
+					t.Logf("request id: %s", requestID)
+				})
+
+				handlerToTest := p.hydrationID(nextHandler)
+				req := httptest.NewRequest("GET", testproxyhelpers.DefaultFakeServiceURL, nil)
+				req.Header.Add(httputils.RequestIDHeader, testRequestID)
+				handlerToTest.ServeHTTP(httptest.NewRecorder(), req)
+			},
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			tt.testFunc()
+		})
+	}
+}
+
+func TestFillRoutes(t *testing.T) {
+	ctx := context.Background()
+	ctx = initApp(ctx)
+	ctx = initLogger(ctx)
+
+	p := &HTTPProxy{
+		ctx: ctx,
+		log: logger.GetPackageLogger(ctx, empty{}),
+	}
+
+	routesCfg := make(routes.MapConfig)
+	params := initParameters()
+	routesCfg["/api/v1/users"] = &routes.Config{
+		Parameters: params,
+	}
+
+	mapRoutes := make(routes.MapRoutes)
+
+	err := p.fillRoutes(routesCfg, mapRoutes, nil, "")
+	require.Nil(t, err)
+	require.Contains(t, mapRoutes, "api")
+	require.Contains(t, mapRoutes["api"].Routes, "v1")
+	require.Contains(t, mapRoutes["api"].Routes["v1"].Routes, "users")
+}

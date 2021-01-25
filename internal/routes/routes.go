@@ -33,82 +33,90 @@ const (
 type empty struct{}
 
 type Route struct {
+	Routes         MapRoutes
 	ctx            context.Context
 	log            zerolog.Logger
-	Parameters     *Parameters
-	Routes         MapRoutes
-	Cache          *cache.Cache
-	Pool           *httpclient.Pool
+	parameters     *Parameters
+	cache          *cache.Cache
+	pool           *httpclient.Pool
 	waitAnswerList map[string]chan struct{}
 	waiteAnswerMu  map[string]*sync.Mutex
 	publisher      publisher.Publisher
-	RefreshTimer   *time.Timer
-	Limits         map[string]*limits.LimitTable
+	refreshTimer   *time.Timer
+	limits         map[string]*limits.LimitTable
 	route          string
 	introspector   introspection.Introspector
-	excluded       bool
 }
 
 func NewRoute(ctx context.Context, routeName string, params *Parameters) *Route {
+	params.SetDefault()
 	r := &Route{
 		ctx:            ctx,
 		log:            logger.GetPackageLogger(ctx, empty{}),
-		Parameters:     params,
+		parameters:     params,
 		route:          routeName,
 		Routes:         make(MapRoutes),
 		waitAnswerList: make(map[string]chan struct{}),
 		waiteAnswerMu:  make(map[string]*sync.Mutex),
+		pool:           httpclient.NewPool(params.Pool),
 	}
 
-	if p := rabbitmq.Get(ctx); p != nil {
-		r.publisher = p
+	if !params.NotIntrospect {
+		if i := introspection.Get(r.ctx); i != nil {
+			r.introspector = i
+		}
 	}
 
-	if i := introspection.Get(ctx); i != nil {
-		r.introspector = i
+	if !params.Cache.Disabled {
+		if externalCache := redis.Get(r.ctx); externalCache != nil {
+			r.cache = cache.NewCache(r.ctx, params.Cache, externalCache)
+		} else {
+			r.cache = cache.NewCache(r.ctx, params.Cache, nil)
+		}
+
+		if params.Refresh.Time > 0 {
+			r.refreshTimer = time.AfterFunc(params.Refresh.Time, r.refreshByTime)
+		}
+
+		if r.parameters.RouteKey != "" {
+			if p := rabbitmq.Get(r.ctx); p != nil {
+				r.publisher = p
+			}
+		}
+	}
+
+	if len(params.Limits) != 0 {
+		if r.cache.External != nil {
+			r.limits = limits.NewLimits(r.route, params.Limits, r.cache.External)
+		} else {
+			r.limits = limits.NewLimits(r.route, params.Limits, nil)
+		}
 	}
 
 	return r
 }
 
-func (r *Route) Initilize() {
-	r.Pool = httpclient.NewPool(r.Parameters.Pool)
-
-	if r.excluded {
-		return
-	}
-
-	if externalCache := redis.Get(r.ctx); externalCache != nil {
-		r.Cache = cache.NewCache(r.ctx, r.Parameters.Cache, externalCache)
-	} else {
-		r.Cache = cache.NewCache(r.ctx, r.Parameters.Cache, nil)
-	}
-
-	r.Limits = limits.NewLimits(r.route, r.Parameters.Limits, r.Cache.External)
-
-	if r.Parameters.Refresh.Time > 0 {
-		r.RefreshTimer = time.AfterFunc(r.Parameters.Refresh.Time, r.refreshByTime)
-	}
+// route is fully exluded if disabled cache, introspection and limits
+func (r *Route) isExcluded() bool {
+	return r.parameters.NotIntrospect &&
+		r.parameters.Cache.Disabled &&
+		len(r.parameters.Limits) == 0
 }
 
-func (r *Route) IsExcluded() bool {
-	return r.excluded
-}
-
-func (r *Route) CheckLimits(req *http.Request) (*bool, error) {
-	result := true
-
-	if len(r.Parameters.Limits) == 0 {
+func (r *Route) checkLimits(req *http.Request) (*bool, error) {
+	result := false
+	if len(r.parameters.Limits) == 0 {
 		return &result, nil
 	}
 
-	limitList := limits.NewLimitedParamsOfRequest(r.Parameters.Limits, req)
+	limitList := limits.NewLimitedParamsOfRequest(r.parameters.Limits, req)
 	if len(limitList) == 0 {
 		return &result, nil
 	}
 
+	result = true
 	for k, v := range limitList {
-		if err := r.Limits[k].Check(v, &result); err != nil {
+		if err := r.limits[k].Check(v, &result); err != nil {
 			return nil, err
 		} else if result {
 			r.log.Debug().Msgf("limit reached: %s:%s", k, v)
@@ -132,19 +140,19 @@ func (r *Route) refreshHandler(hk string, data *rrdata.RequestResponseData) erro
 		return errors.Wrap(err, "failed to build request")
 	}
 
-	if err = r.HydrationIntrospect(req); err != nil {
+	if err = r.hydrationIntrospect(req); err != nil {
 		r.log.Err(err).Msg("")
-		if err = r.Cache.Delete(hk); err != nil {
+		if err = r.cache.Delete(hk); err != nil {
 			return errors.Wrap(err, "introspection failed, delete key failed")
 		}
 		return errors.Wrap(err, "introspection failed")
 	}
 
-	client := r.Pool.GetFromPool()
-	defer r.Pool.PutToPool(client)
+	client := r.pool.GetFromPool()
+	defer r.pool.PutToPool(client)
 
 	if err := data.UpdateByRequest(client, req); err != nil {
-		if err = r.Cache.Delete(hk); err != nil {
+		if err = r.cache.Delete(hk); err != nil {
 			return errors.Wrap(err, "failed to update request/response data, delete key failed")
 		}
 		return errors.Wrap(err, "failed to update request/response data")
@@ -152,11 +160,11 @@ func (r *Route) refreshHandler(hk string, data *rrdata.RequestResponseData) erro
 
 	r.log.Debug().Msgf("%s: cache refreshed", hk)
 
-	if r.Cache.External == nil {
+	if r.cache.External == nil {
 		return nil
 	}
 
-	if err := r.Cache.External.Update(hk, data); err != nil {
+	if err := r.cache.External.Update(hk, data); err != nil {
 		return errors.Wrap(err, "failed to update external cache")
 	}
 
@@ -165,7 +173,7 @@ func (r *Route) refreshHandler(hk string, data *rrdata.RequestResponseData) erro
 }
 
 func (r *Route) refreshByTime() {
-	r.Cache.Memory.Range(func(k, v interface{}) bool {
+	r.cache.Memory.Range(func(k, v interface{}) bool {
 		data := v.(*cachedata.CacheItem).Data.(*rrdata.RequestResponseData)
 		hk := k.(string)
 		go func() {
@@ -178,7 +186,7 @@ func (r *Route) refreshByTime() {
 		return true
 	})
 
-	r.RefreshTimer.Reset(r.Parameters.Refresh.Time)
+	r.refreshTimer.Reset(r.parameters.Refresh.Time)
 }
 
 // Publish publishes request from client to message queue
@@ -186,19 +194,19 @@ func (r *Route) Publish(message interface{}) error {
 	if r.publisher == nil {
 		return nil
 	}
-	return r.publisher.SendMessage(message, r.Parameters.RouteKey)
+	return r.publisher.SendMessage(message, r.parameters.RouteKey)
 }
 
 func (r *Route) requestToBack(hk string, w http.ResponseWriter, req *http.Request) *rrdata.RequestResponseData {
 	var err error
 	// Proxy request to backend
-	client := r.Pool.GetFromPool()
-	defer r.Pool.PutToPool(client)
+	client := r.pool.GetFromPool()
+	defer r.pool.PutToPool(client)
 
-	rrData := rrdata.NewRequestResponseData(hk, r.Parameters.Refresh.MaxCount, r.Cache.External)
+	rrData := rrdata.NewRequestResponseData(hk, r.parameters.Refresh.MaxCount, r.cache.External)
 
 	var resp *http.Response
-	req.URL, err = url.Parse(r.Parameters.DSN + req.URL.String())
+	req.URL, err = url.Parse(r.parameters.DSN + req.URL.String())
 	if err != nil {
 		resp = httputils.ErrResponse(err.Error(), http.StatusServiceUnavailable)
 		rrData.Request = nil
@@ -224,14 +232,15 @@ func (r *Route) requestToBack(hk string, w http.ResponseWriter, req *http.Reques
 	return rrData
 }
 
-// NotCached is handler for proxy requests to excluded routes and routes which not need to cache
-func (r *Route) NotCached(w http.ResponseWriter, req *http.Request) {
-	client := r.Pool.GetFromPool()
-	defer r.Pool.PutToPool(client)
+// notCached is handler for proxy requests to excluded routes and routes which not need to cache
+func (r *Route) notCached(w http.ResponseWriter, req *http.Request) {
+	client := r.pool.GetFromPool()
+	defer r.pool.PutToPool(client)
 
 	var err error
-	req.URL, err = url.Parse(r.Parameters.DSN + req.URL.String())
+	req.URL, err = url.Parse(r.parameters.DSN + req.URL.String())
 	if err != nil {
+		r.log.Err(err).Str("requestID", httputils.GetRequestID(req)).Msg("parsing request url failed")
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
@@ -240,19 +249,24 @@ func (r *Route) NotCached(w http.ResponseWriter, req *http.Request) {
 
 	resp, err := client.Do(req)
 	if err != nil {
+		r.log.Err(err).Str("requestID", httputils.GetRequestID(req)).Msg("request to back failed")
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
 	defer resp.Body.Close()
 
+	// Mark that it is a proxy request
+	resp.Header.Add(rrdata.ResponseSourceHeader, rrdata.ResponseProxy.String())
+
 	if err := httputils.CopyHTTPResponse(w, resp); err != nil {
+		r.log.Err(err).Str("requestID", httputils.GetRequestID(req)).Msg("copy http response failed")
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 	}
 }
 
-func (r *Route) HydrationIntrospect(req *http.Request) error {
-	if r.introspector == nil || !r.Parameters.Introspect {
-		r.log.Debug().Msgf("no introspector or disabled introspection: %s", r.route)
+func (r *Route) hydrationIntrospect(req *http.Request) error {
+	if r.introspector == nil || r.parameters.NotIntrospect {
+		r.log.Debug().Str("requestID", httputils.GetRequestID(req)).Msgf("no introspector or disabled introspection: %s", r.route)
 		return nil
 	}
 
@@ -262,7 +276,7 @@ func (r *Route) HydrationIntrospect(req *http.Request) error {
 	}
 
 	var str string
-	switch r.Parameters.IntrospectHydration {
+	switch r.parameters.IntrospectHydration {
 	case hydrationIntrospectPlainText:
 		str = strings.ReplaceAll(strings.ReplaceAll(string(content), "\"", "\\\""), "\n", "")
 	case hydrationIntrospectBase64:
@@ -272,7 +286,7 @@ func (r *Route) HydrationIntrospect(req *http.Request) error {
 	}
 
 	req.Header.Add(hydrationIntrospectHeader, str)
-	r.log.Debug().Msgf("introspect header: %s", str)
+	r.log.Debug().Str("requestID", httputils.GetRequestID(req)).Msgf("introspect header: %s", str)
 
 	return nil
 }
@@ -280,7 +294,7 @@ func (r *Route) HydrationIntrospect(req *http.Request) error {
 // refresh incremets refresh count and checks that we not reached the limit
 func (r *Route) refresh(data *rrdata.RequestResponseData, hk string) {
 	// Check that we have refresh limit by request count
-	if r.Parameters.Refresh.MaxCount == 0 {
+	if r.parameters.Refresh.MaxCount == 0 {
 		return
 	}
 	if err := data.Response.Refresh.Inc(); err != nil {
@@ -301,16 +315,16 @@ func (r *Route) responseHandle(data *rrdata.RequestResponseData, w http.Response
 	if data.Request == nil {
 		var err error
 		if data.Request, err = rrdata.NewRequestData(req); err != nil {
-			r.log.Err(err).Msg("failed to read data from request")
+			r.log.Err(err).Str("requestID", httputils.GetRequestID(req)).Msg("failed to read data from request")
 		}
 	}
 
 	if err := data.Response.Write(w, rrdata.ResponseCache); err != nil {
-		r.log.Err(err).Msg("failed to write data from cache")
+		r.log.Err(err).Str("requestID", httputils.GetRequestID(req)).Msg("failed to write data from cache")
 	}
 
 	if err := r.Publish(data.Request); err != nil {
-		r.log.Err(err).Msg("failed to publish data")
+		r.log.Err(err).Str("requestID", httputils.GetRequestID(req)).Msg("failed to publish data")
 	}
 
 	go r.refresh(data, hk)
@@ -319,7 +333,7 @@ func (r *Route) responseHandle(data *rrdata.RequestResponseData, w http.Response
 func (r *Route) waitAnswer(w http.ResponseWriter, req *http.Request, hk string, ch chan struct{}) {
 	<-ch
 
-	if data, err := r.Cache.Select(hk); err == nil {
+	if data, err := r.cache.Select(hk); err == nil {
 		r.responseHandle(data, w, req, hk)
 		return
 	}
@@ -327,7 +341,7 @@ func (r *Route) waitAnswer(w http.ResponseWriter, req *http.Request, hk string, 
 	http.Error(w, "failed to get data from cache", http.StatusServiceUnavailable)
 }
 
-func (r *Route) CachedHandler(w http.ResponseWriter, req *http.Request) {
+func (r *Route) cachedHandler(w http.ResponseWriter, req *http.Request) {
 	hk, err := httputils.HashRequest(req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
@@ -335,7 +349,7 @@ func (r *Route) CachedHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	// Finding a response to a request in the memory cache
-	if data, err1 := r.Cache.Select(hk); err1 == nil {
+	if data, err1 := r.cache.Select(hk); err1 == nil {
 		r.responseHandle(data, w, req, hk)
 		return
 	}
@@ -361,7 +375,7 @@ func (r *Route) CachedHandler(w http.ResponseWriter, req *http.Request) {
 			// Proxy request to backend
 			rrData := r.requestToBack(hk, w, req)
 			// Save answer to mem cache
-			if err := r.Cache.Add(hk, rrData); err != nil {
+			if err := r.cache.Add(hk, rrData); err != nil {
 				r.log.Err(err).Msg("failed to save data to cache")
 			}
 
@@ -376,4 +390,39 @@ func (r *Route) CachedHandler(w http.ResponseWriter, req *http.Request) {
 	} else {
 		r.waitAnswer(w, req, hk, waitCh)
 	}
+}
+
+func (r *Route) ProxyHandler(w http.ResponseWriter, req *http.Request) {
+	// Checking an authorization token
+	err := r.hydrationIntrospect(req)
+	var e *introspection.ErrTokenInactive
+	if errors.As(err, &e) || errors.Is(err, introspection.ErrBadAuthRequest) {
+		r.log.Err(err).Str("requestID", httputils.GetRequestID(req)).Msg("intropsection failed")
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	} else if err != nil {
+		r.log.Err(err).Str("requestID", httputils.GetRequestID(req)).Msg("intropsection failed")
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+
+	// Checking limits
+	if res, err := r.checkLimits(req); err != nil {
+		r.log.Err(err).Str("requestID", httputils.GetRequestID(req)).Msg("check limits failed")
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	} else if *res {
+		r.log.Err(err).Str("requestID", httputils.GetRequestID(req)).Msg("check limits failed")
+		http.Error(w, "limit reached", http.StatusTooManyRequests)
+		return
+	}
+
+	// It's a cached request, checking allowed methods
+	if !r.parameters.Cache.Disabled && r.parameters.Methods.Has(req.Method) {
+		r.cachedHandler(w, req)
+		return
+	}
+
+	// Ooops, not allowed methods or nor cached request, pass request to backend
+	r.notCached(w, req)
 }

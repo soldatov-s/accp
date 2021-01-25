@@ -26,7 +26,7 @@ func TestSetDefault(t *testing.T) {
 	require.NotEmpty(t, p.Pool.Size)
 	require.NotEmpty(t, p.Pool.Timeout)
 	require.NotNil(t, p.Limits)
-	require.NotEqual(t, 0, len(p.Limits))
+	require.Equal(t, 0, len(p.Limits))
 }
 
 // nolint : funlen
@@ -49,7 +49,7 @@ func TestMerge(t *testing.T) {
 					Cache:               &cache.Config{},
 					Refresh:             &refresh.Config{},
 					Pool:                &httpclient.Config{},
-					Introspect:          false,
+					NotIntrospect:       false,
 					IntrospectHydration: "nothing",
 					RouteKey:            "test key",
 				}
@@ -64,7 +64,7 @@ func TestMerge(t *testing.T) {
 					Cache:               &cache.Config{},
 					Refresh:             &refresh.Config{},
 					Pool:                &httpclient.Config{},
-					Introspect:          false,
+					NotIntrospect:       false,
 					IntrospectHydration: "nothing",
 					RouteKey:            "test key",
 				}
@@ -82,7 +82,7 @@ func TestMerge(t *testing.T) {
 					Cache:               &cache.Config{},
 					Refresh:             &refresh.Config{},
 					Pool:                &httpclient.Config{},
-					Introspect:          false,
+					NotIntrospect:       false,
 					IntrospectHydration: "nothing",
 					RouteKey:            "test key",
 				}
@@ -98,7 +98,7 @@ func TestMerge(t *testing.T) {
 					Cache:               &cache.Config{},
 					Refresh:             &refresh.Config{},
 					Pool:                &httpclient.Config{},
-					Introspect:          false,
+					NotIntrospect:       false,
 					IntrospectHydration: "nothing",
 					RouteKey:            "test key",
 				}
@@ -116,7 +116,7 @@ func TestMerge(t *testing.T) {
 					Cache:               &cache.Config{},
 					Refresh:             &refresh.Config{},
 					Pool:                &httpclient.Config{},
-					Introspect:          false,
+					NotIntrospect:       false,
 					IntrospectHydration: "nothing",
 					RouteKey:            "test key",
 				}
@@ -131,7 +131,7 @@ func TestMerge(t *testing.T) {
 					Cache:               &cache.Config{},
 					Refresh:             &refresh.Config{},
 					Pool:                &httpclient.Config{},
-					Introspect:          true,
+					NotIntrospect:       true,
 					IntrospectHydration: "plaintext",
 					RouteKey:            "test key2",
 				}
@@ -152,7 +152,7 @@ func TestMerge(t *testing.T) {
 					Cache:               &cache.Config{},
 					Refresh:             &refresh.Config{},
 					Pool:                &httpclient.Config{},
-					Introspect:          true,
+					NotIntrospect:       true,
 					IntrospectHydration: "plaintext",
 					RouteKey:            "test key2",
 				}

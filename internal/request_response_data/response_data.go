@@ -25,10 +25,11 @@ type ResponseSource int
 const (
 	ResponseBack ResponseSource = iota
 	ResponseCache
+	ResponseProxy
 )
 
 func (r ResponseSource) String() string {
-	return []string{"back", "cache"}[r]
+	return []string{"back", "cache", "proxy"}[r]
 }
 
 type ResponseData struct {

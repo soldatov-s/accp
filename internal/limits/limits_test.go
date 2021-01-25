@@ -105,10 +105,10 @@ func initCache(t *testing.T, dsn string) *external.Cache {
 
 func initConfig() *Config {
 	c := &Config{
-		Header:  testHeader(),
-		Cookie:  testCookie(),
-		Counter: testCounter,
-		PT:      testPT,
+		Header:     testHeader(),
+		Cookie:     testCookie(),
+		MaxCounter: testCounter,
+		TTL:        testPT,
 	}
 
 	return c
@@ -319,7 +319,7 @@ func TestNewLimits(t *testing.T) {
 		v, ok := l[k]
 		require.True(t, ok)
 		require.Equal(t, defaultCounter, v.maxCount)
-		require.Equal(t, defaultPT, v.pt)
+		require.Equal(t, defaultTTL, v.pt)
 		require.Equal(t, v.route, testRoute)
 		require.NotNil(t, v.cache)
 	}

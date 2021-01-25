@@ -119,6 +119,10 @@ func (p *Publish) Shutdown() error {
 
 // SendMessage publish message to exchange
 func (p *Publish) SendMessage(message interface{}, routingKey string) error {
+	if routingKey == "" || message == nil {
+		return nil
+	}
+
 	body, err := json.Marshal(message)
 	if err != nil {
 		return err

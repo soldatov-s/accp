@@ -10,19 +10,20 @@ const (
 )
 
 type Config struct {
-	Listen    string
-	Hydration struct {
-		RequestID bool
-	}
-	Routes   routes.MapConfig
-	Excluded routes.MapConfig
+	Listen string
+	// RequestID is flag for hydration requestid
+	RequestID bool
+	Routes    routes.MapConfig
+	Excluded  routes.MapConfig
 }
 
-func (c *Config) Validate() error {
+func (c *Config) SetDefault() {
 	if c.Listen == "" {
 		c.Listen = defaultListen
 	}
+}
 
+func (c *Config) Validate() error {
 	if len(c.Routes) == 0 {
 		return errors.EmptyConfigParameter("routes")
 	}

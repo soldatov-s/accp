@@ -26,6 +26,7 @@ func TestNewLimitedParamsOfRequest(t *testing.T) {
 			name: "get ip and token from header",
 			testFunc: func() {
 				mc := NewMapConfig()
+				mc.SetDefault()
 				req, err := http.NewRequest(http.MethodGet, testProxyHelpers.DefaultFakeServiceURL+testProxyHelpers.GetEndpoint, nil)
 				require.Nil(t, err)
 				req.Header.Add(authorizationHeader, testToken)
@@ -48,6 +49,7 @@ func TestNewLimitedParamsOfRequest(t *testing.T) {
 			name: "get ip and bearer token from header",
 			testFunc: func() {
 				mc := NewMapConfig()
+				mc.SetDefault()
 				req, err := http.NewRequest(http.MethodGet, testProxyHelpers.DefaultFakeServiceURL+testProxyHelpers.GetEndpoint, nil)
 				require.Nil(t, err)
 				req.Header.Add(authorizationHeader, testBearerToken)
@@ -70,6 +72,7 @@ func TestNewLimitedParamsOfRequest(t *testing.T) {
 			name: "get ip from x-forwarded-for with proxy and token from header",
 			testFunc: func() {
 				mc := NewMapConfig()
+				mc.SetDefault()
 				req, err := http.NewRequest(http.MethodGet, testProxyHelpers.DefaultFakeServiceURL+testProxyHelpers.GetEndpoint, nil)
 				require.Nil(t, err)
 				req.Header.Add(authorizationHeader, testToken)
@@ -92,6 +95,7 @@ func TestNewLimitedParamsOfRequest(t *testing.T) {
 			name: "get ip from header, token from cookie",
 			testFunc: func() {
 				mc := NewMapConfig()
+				mc.SetDefault()
 				mc[defaultItemToken].Cookie = testCookie()
 				req, err := http.NewRequest(http.MethodGet, testProxyHelpers.DefaultFakeServiceURL+testProxyHelpers.GetEndpoint, nil)
 				require.Nil(t, err)
@@ -118,7 +122,7 @@ func TestNewLimitedParamsOfRequest(t *testing.T) {
 			name: "get ip from header, token from cookie, user cookie",
 			testFunc: func() {
 				mc := NewMapConfig()
-
+				mc.SetDefault()
 				mc[defaultItemToken].Cookie = testCookie()
 				mc[testItemUser] = &Config{Cookie: []string{testUserCookieName}}
 				req, err := http.NewRequest(http.MethodGet, testProxyHelpers.DefaultFakeServiceURL+testProxyHelpers.GetEndpoint, nil)

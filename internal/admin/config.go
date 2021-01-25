@@ -9,10 +9,8 @@ type Config struct {
 	Pprof  bool
 }
 
-func (c *Config) Validate() error {
+func (c *Config) SetDefault() {
 	if c.Listen == "" {
 		c.Listen = defaultListen
 	}
-
-	return nil
 }

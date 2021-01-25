@@ -9,16 +9,13 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/soldatov-s/accp/internal/cache/external"
 	"github.com/soldatov-s/accp/internal/httpsrv"
+	"github.com/soldatov-s/accp/internal/httputils"
 	"github.com/soldatov-s/accp/internal/introspection"
 	"github.com/soldatov-s/accp/internal/logger"
 	"github.com/soldatov-s/accp/internal/publisher"
 	"github.com/soldatov-s/accp/internal/rabbitmq"
 	"github.com/soldatov-s/accp/internal/redis"
 	"github.com/soldatov-s/accp/internal/routes"
-)
-
-const (
-	RequestIDHeader = "x-request-id"
 )
 
 type empty struct{}
@@ -35,6 +32,8 @@ type HTTPProxy struct {
 }
 
 func NewHTTPProxy(ctx context.Context, cfg *Config) (*HTTPProxy, error) {
+	cfg.SetDefault()
+
 	err := cfg.Validate()
 	if err != nil {
 		return nil, err
@@ -50,7 +49,7 @@ func NewHTTPProxy(ctx context.Context, cfg *Config) (*HTTPProxy, error) {
 		routes:       make(routes.MapRoutes),
 	}
 
-	p.srv = httpsrv.NewHTTPServer(cfg.Listen, p.HydrationID(http.HandlerFunc(p.proxyHandler)))
+	p.srv = httpsrv.NewHTTPServer(cfg.Listen, p.hydrationID(http.HandlerFunc(p.proxyHandler)))
 
 	if err := p.fillRoutes(p.cfg.Routes, p.routes, nil, ""); err != nil {
 		return nil, err
@@ -85,91 +84,34 @@ func (p *HTTPProxy) fillRoutes(rc routes.MapConfig, r routes.MapRoutes, parentPa
 			return err
 		}
 
-		if err := p.fillExcludedRoutes(rc[configKey], parentRoute+"/"+k, params); err != nil {
-			return err
-		}
-
 		if err := p.fillRoutes(rc[configKey].Routes, route.Routes, params, parentRoute+"/"+k); err != nil {
 			return err
 		}
-
-		route.Initilize()
 	}
 
-	return nil
-}
-
-func (p *HTTPProxy) fillExcludedRoutes(rc *routes.Config, parentRoute string, parentParameters *routes.Parameters) error {
-	for _, route := range rc.Excluded {
-		k := strings.Trim(parentRoute+"/"+route, "/")
-		p.log.Debug().Msgf("parse excluded route \"%s\"", k)
-
-		route, err := p.routes.AddExludedRouteByPath(p.ctx, k, k, parentParameters)
-		if err != nil {
-			p.log.Warn().Err(err).Msgf("failed to add exluded route to map %s", parentRoute+"/"+k)
-			return err
-		}
-
-		route.Initilize()
-	}
 	return nil
 }
 
 func (p *HTTPProxy) proxyHandler(w http.ResponseWriter, r *http.Request) {
 	route := p.routes.FindRouteByHTTPRequest(r)
-
-	// Handle excluded routes
-	if route.IsExcluded() {
-		route.NotCached(w, r)
-		return
-	}
-
-	// The check an authorization token
-	err := route.HydrationIntrospect(r)
-	if _, ok := err.(*introspection.ErrTokenInactive); ok {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
-		return
-	} else if err != nil {
-		http.Error(w, err.Error(), http.StatusServiceUnavailable)
-		return
-	}
-
-	// Check limits
-	if res, err := route.CheckLimits(r); err != nil {
-		http.Error(w, err.Error(), http.StatusServiceUnavailable)
-		return
-	} else if *res {
-		http.Error(w, "limit reached", http.StatusTooManyRequests)
-		return
-	}
-
-	if route.Parameters.Cache.Disabled {
-		route.NotCached(w, r)
-		return
-	}
-
-	if route.Parameters.Methods.Has(r.Method) {
-		route.CachedHandler(w, r)
-		return
-	}
-	route.NotCached(w, r)
+	route.ProxyHandler(w, r)
 }
 
-func (p *HTTPProxy) HydrationID(next http.Handler) http.Handler {
+func (p *HTTPProxy) hydrationID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !p.cfg.Hydration.RequestID {
+		if !p.cfg.RequestID {
 			return
 		}
 
-		requestID := r.Header.Get(RequestIDHeader)
+		requestID := httputils.GetRequestID(r)
 		if requestID == "" {
 			newUUID, err := uuid.NewRandom()
 			if err != nil {
 				p.log.Err(err).Msg("failed to generate requesID")
 				return
 			}
-			r.Header.Del(RequestIDHeader)
-			r.Header.Add(RequestIDHeader, newUUID.String())
+			r.Header.Del(httputils.RequestIDHeader)
+			r.Header.Add(httputils.RequestIDHeader, newUUID.String())
 		}
 
 		next.ServeHTTP(w, r)

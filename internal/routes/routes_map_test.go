@@ -78,61 +78,6 @@ func TestAddRouteByPath(t *testing.T) {
 	}
 }
 
-func TestAddExludedRouteByPath(t *testing.T) {
-	ctx := context.Background()
-	ctx = initApp(ctx)
-	ctx = initLogger(ctx)
-
-	rm := make(MapRoutes)
-	tests := []struct {
-		name     string
-		testFunc func()
-	}{
-		{
-			name: "adding the route /api/v1/users",
-			testFunc: func() {
-				r, err := rm.AddExludedRouteByPath(ctx, "/api/v1/users", "/api/v1/users", &Parameters{})
-				require.Nil(t, err)
-				require.True(t, r.excluded)
-
-				require.Contains(t, rm, "api")
-				require.Contains(t, rm["api"].Routes, "v1")
-				require.Contains(t, rm["api"].Routes["v1"].Routes, "users")
-			},
-		},
-		{
-			name: "adding the route /api/v1/testers",
-			testFunc: func() {
-				r, err := rm.AddExludedRouteByPath(ctx, "/api/v1/testers", "/api/v1/testers", &Parameters{})
-				require.Nil(t, err)
-				require.True(t, r.excluded)
-
-				require.Contains(t, rm, "api")
-				require.Contains(t, rm["api"].Routes, "v1")
-				require.Contains(t, rm["api"].Routes["v1"].Routes, "testers")
-			},
-		},
-		{
-			name: "adding the duplicated route /api/v1/testers",
-			testFunc: func() {
-				r, err := rm.AddExludedRouteByPath(ctx, "/api/v1/testers", "/api/v1/testers", &Parameters{})
-				require.NotNil(t, err)
-				require.Nil(t, r)
-
-				require.Contains(t, rm, "api")
-				require.Contains(t, rm["api"].Routes, "v1")
-				require.Contains(t, rm["api"].Routes["v1"].Routes, "testers")
-			},
-		},
-	}
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			tt.testFunc()
-		})
-	}
-}
-
 func TestFindRouteByPath(t *testing.T) {
 	ctx := context.Background()
 	ctx = initApp(ctx)

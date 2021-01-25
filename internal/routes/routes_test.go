@@ -19,6 +19,7 @@ import (
 	"github.com/soldatov-s/accp/internal/httpclient"
 	"github.com/soldatov-s/accp/internal/httputils"
 	"github.com/soldatov-s/accp/internal/introspection"
+	"github.com/soldatov-s/accp/internal/limits"
 	"github.com/soldatov-s/accp/internal/rabbitmq"
 	"github.com/soldatov-s/accp/internal/redis"
 	rrdata "github.com/soldatov-s/accp/internal/request_response_data"
@@ -126,6 +127,7 @@ func initIntrospectorConfig() *introspection.Config {
 		BodyTemplate:   testproxyhelpers.DefaultFakeIntrospectorBodyTemplate,
 		CookieName:     testproxyhelpers.DefaultFakeIntrospectorCookiesName(),
 		QueryParamName: testproxyhelpers.DefaultFakeIntrospectorQueryParamsName(),
+		HeaderName:     testproxyhelpers.DefaultFakeIntrospectorHeadersName(),
 		Pool:           initPool(),
 	}
 }
@@ -159,15 +161,16 @@ func initParameters() *Parameters {
 			MaxCount: 15,
 			Time:     3 * time.Second,
 		},
-		Introspect: false,
-		RouteKey:   testRouteKey,
+		NotIntrospect: false,
+		RouteKey:      testRouteKey,
 	}
 
 	parameters.SetDefault()
+	parameters.Limits.SetDefault()
 
 	// Set limit config for token
-	parameters.Limits["token"].Counter = testLimitCounter
-	parameters.Limits["token"].PT = testLimitPT
+	parameters.Limits["token"].MaxCounter = testLimitCounter
+	parameters.Limits["token"].TTL = testLimitPT
 
 	return parameters
 }
@@ -183,8 +186,6 @@ func initRoute(t *testing.T) *Route {
 
 	params := initParameters()
 	r := NewRoute(ctx, "/api/v1/users", params)
-
-	r.Initilize()
 
 	return r
 }
@@ -217,68 +218,25 @@ func TestNewRoute(t *testing.T) {
 				params := initParameters()
 				r := NewRoute(ctx, "/api/v1/users", params)
 				require.NotNil(t, r)
-			},
-		},
-	}
 
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			tt.testFunc()
-		})
-	}
-}
-
-func TestInitilize(t *testing.T) {
-	defer dockertest.KillAllDockers()
-	ctx := context.Background()
-	ctx = initApp(ctx)
-	ctx = initLogger(ctx)
-
-	tests := []struct {
-		name     string
-		testFunc func()
-	}{
-		{
-			name: "test without intropspector, external cache, publisher",
-			testFunc: func() {
-				params := initParameters()
-				r := NewRoute(ctx, "/api/v1/users", params)
-				require.NotNil(t, r)
-
-				r.Initilize()
-			},
-		},
-		{
-			name: "test with all external services",
-			testFunc: func() {
-				ctx, _ = initPublish(ctx, t)
-				ctx = initExternalCache(ctx, t)
-				ctx = initIntrospector(ctx, t)
-
-				params := initParameters()
-				r := NewRoute(ctx, "/api/v1/users", params)
-				require.NotNil(t, r)
-
-				r.Initilize()
-				require.NotNil(t, r.Cache)
-				require.NotNil(t, r.Limits)
-				require.NotNil(t, r.RefreshTimer)
+				require.NotNil(t, r.cache)
+				require.NotNil(t, r.limits)
+				require.NotNil(t, r.refreshTimer)
 			},
 		},
 		{
 			name: "test exluded route with all external services",
 			testFunc: func() {
 				params := initParameters()
+				params.Cache.Disabled = true
+				params.NotIntrospect = true
+				params.Limits = limits.NewMapConfig()
 				r := NewRoute(ctx, "/api/v1/users", params)
 				require.NotNil(t, r)
 
-				r.excluded = true
-
-				r.Initilize()
-				require.Nil(t, r.Cache)
-				require.Nil(t, r.Limits)
-				require.Nil(t, r.RefreshTimer)
+				require.Nil(t, r.cache)
+				require.Nil(t, r.limits)
+				require.Nil(t, r.refreshTimer)
 			},
 		},
 	}
@@ -297,11 +255,14 @@ func TestIsExcluded(t *testing.T) {
 	ctx = initLogger(ctx)
 
 	params := initParameters()
+	params.Cache.Disabled = true
+	params.NotIntrospect = true
+	params.Limits = limits.NewMapConfig()
+
 	r := NewRoute(ctx, "/api/v1/users", params)
 	require.NotNil(t, r)
 
-	r.excluded = true
-	result := r.IsExcluded()
+	result := r.isExcluded()
 	require.True(t, result)
 }
 
@@ -314,7 +275,6 @@ func TestCheckLimitsWithoutExternalCache(t *testing.T) {
 	params := initParameters()
 	r := NewRoute(ctx, "/api/v1/users", params)
 	require.NotNil(t, r)
-	r.Initilize()
 
 	req, err := http.NewRequest(http.MethodGet, "/api/v1/users", nil)
 	require.Nil(t, err)
@@ -327,7 +287,7 @@ func TestCheckLimitsWithoutExternalCache(t *testing.T) {
 		{
 			name: "first request",
 			testFunc: func() {
-				res, err := r.CheckLimits(req)
+				res, err := r.checkLimits(req)
 				require.Nil(t, err)
 				require.False(t, *res)
 			},
@@ -335,7 +295,7 @@ func TestCheckLimitsWithoutExternalCache(t *testing.T) {
 		{
 			name: "second request, overflow",
 			testFunc: func() {
-				res, err := r.CheckLimits(req)
+				res, err := r.checkLimits(req)
 				require.Nil(t, err)
 				require.True(t, *res)
 			},
@@ -345,7 +305,7 @@ func TestCheckLimitsWithoutExternalCache(t *testing.T) {
 			testFunc: func() {
 				time.Sleep(testLimitPT + 1*time.Second)
 
-				res, err := r.CheckLimits(req)
+				res, err := r.checkLimits(req)
 				require.Nil(t, err)
 				require.False(t, *res)
 			},
@@ -371,7 +331,6 @@ func TestCheckLimitsWithExternalCache(t *testing.T) {
 	params := initParameters()
 	r := NewRoute(ctx, "/api/v1/users", params)
 	require.NotNil(t, r)
-	r.Initilize()
 
 	req, err := http.NewRequest(http.MethodGet, "/api/v1/users", nil)
 	require.Nil(t, err)
@@ -384,7 +343,7 @@ func TestCheckLimitsWithExternalCache(t *testing.T) {
 		{
 			name: "first request",
 			testFunc: func() {
-				res, err := r.CheckLimits(req)
+				res, err := r.checkLimits(req)
 				require.Nil(t, err)
 				require.False(t, *res)
 			},
@@ -392,7 +351,7 @@ func TestCheckLimitsWithExternalCache(t *testing.T) {
 		{
 			name: "second request, overflow",
 			testFunc: func() {
-				res, err := r.CheckLimits(req)
+				res, err := r.checkLimits(req)
 				require.Nil(t, err)
 				require.True(t, *res)
 			},
@@ -402,7 +361,7 @@ func TestCheckLimitsWithExternalCache(t *testing.T) {
 			testFunc: func() {
 				time.Sleep(testLimitPT + 1*time.Second)
 
-				res, err := r.CheckLimits(req)
+				res, err := r.checkLimits(req)
 				require.Nil(t, err)
 				require.False(t, *res)
 			},
@@ -428,10 +387,8 @@ func TestHydrationIntrospect(t *testing.T) {
 	ctx = initIntrospector(ctx, t)
 
 	params := initParameters()
-	params.Introspect = true
 	r := NewRoute(ctx, "/api/v1/users", params)
 	require.NotNil(t, r)
-	r.Initilize()
 
 	tests := []struct {
 		name     string
@@ -445,7 +402,7 @@ func TestHydrationIntrospect(t *testing.T) {
 
 				req.Header.Add("Authorization", "bearer "+testproxyhelpers.TestToken)
 
-				err = r.HydrationIntrospect(req)
+				err = r.hydrationIntrospect(req)
 				require.Nil(t, err)
 
 				header := req.Header.Get(hydrationIntrospectHeader)
@@ -455,13 +412,13 @@ func TestHydrationIntrospect(t *testing.T) {
 		{
 			name: "test good token with hydration plaintext",
 			testFunc: func() {
-				r.Parameters.IntrospectHydration = hydrationIntrospectPlainText
+				r.parameters.IntrospectHydration = hydrationIntrospectPlainText
 				req, err := http.NewRequest(http.MethodGet, "/api/v1/users", nil)
 				require.Nil(t, err)
 
 				req.Header.Add("Authorization", "bearer "+testproxyhelpers.TestToken)
 
-				err = r.HydrationIntrospect(req)
+				err = r.hydrationIntrospect(req)
 				require.Nil(t, err)
 
 				header := req.Header.Get(hydrationIntrospectHeader)
@@ -471,13 +428,13 @@ func TestHydrationIntrospect(t *testing.T) {
 		{
 			name: "test good token with hydration base64",
 			testFunc: func() {
-				r.Parameters.IntrospectHydration = hydrationIntrospectBase64
+				r.parameters.IntrospectHydration = hydrationIntrospectBase64
 				req, err := http.NewRequest(http.MethodGet, "/api/v1/users", nil)
 				require.Nil(t, err)
 
 				req.Header.Add("Authorization", "bearer "+testproxyhelpers.TestToken)
 
-				err = r.HydrationIntrospect(req)
+				err = r.hydrationIntrospect(req)
 				require.Nil(t, err)
 
 				header := req.Header.Get(hydrationIntrospectHeader)
@@ -492,7 +449,7 @@ func TestHydrationIntrospect(t *testing.T) {
 
 				req.Header.Set("Authorization", "bearer "+testproxyhelpers.BadToken)
 
-				err = r.HydrationIntrospect(req)
+				err = r.hydrationIntrospect(req)
 				require.NotNil(t, err)
 			},
 		},
@@ -513,10 +470,9 @@ func TestPublish(t *testing.T) {
 	ctx, dsn := initPublish(ctx, t)
 
 	params := initParameters()
-	params.Introspect = true
+	params.NotIntrospect = true
 	r := NewRoute(ctx, "/api/v1/users", params)
 	require.NotNil(t, r)
-	r.Initilize()
 
 	consum, err := rabbitMQConsumer.CreateConsumer(dsn)
 	require.Nil(t, err)
@@ -527,7 +483,7 @@ func TestPublish(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
-		msgs, err1 := consum.StartConsume(testExchangeName, testQueue, r.Parameters.RouteKey, testConsumer)
+		msgs, err1 := consum.StartConsume(testExchangeName, testQueue, r.parameters.RouteKey, testConsumer)
 		require.Nil(t, err1)
 		wg.Done()
 
@@ -566,7 +522,7 @@ func TestPublish(t *testing.T) {
 }
 
 func TestNotCached(t *testing.T) {
-	server := testproxyhelpers.FakeBackendService(t, testproxyhelpers.DefaultFakeIntrospectorHost)
+	server := testproxyhelpers.FakeBackendService(t, testproxyhelpers.DefaultFakeServiceHost)
 	server.Start()
 	defer server.Close()
 
@@ -578,7 +534,6 @@ func TestNotCached(t *testing.T) {
 
 	r := NewRoute(ctx, testproxyhelpers.GetEndpoint, params)
 	require.NotNil(t, r)
-	r.Initilize()
 
 	var timestamp time.Time
 
@@ -593,7 +548,7 @@ func TestNotCached(t *testing.T) {
 				require.Nil(t, err)
 
 				w := httptest.NewRecorder()
-				r.NotCached(w, req)
+				r.notCached(w, req)
 
 				resp := w.Result()
 				body, err := ioutil.ReadAll(resp.Body)
@@ -617,7 +572,7 @@ func TestNotCached(t *testing.T) {
 				require.Nil(t, err)
 
 				w := httptest.NewRecorder()
-				r.NotCached(w, req)
+				r.notCached(w, req)
 
 				resp := w.Result()
 				body, err := ioutil.ReadAll(resp.Body)
@@ -654,7 +609,6 @@ func TestRequestToBack(t *testing.T) {
 
 	r := NewRoute(ctx, testproxyhelpers.GetEndpoint, params)
 	require.NotNil(t, r)
-	r.Initilize()
 
 	tests := []struct {
 		name     string
@@ -663,7 +617,7 @@ func TestRequestToBack(t *testing.T) {
 		{
 			name: "test normal request",
 			testFunc: func() {
-				server := testproxyhelpers.FakeBackendService(t, testproxyhelpers.DefaultFakeIntrospectorHost)
+				server := testproxyhelpers.FakeBackendService(t, testproxyhelpers.DefaultFakeServiceHost)
 				server.Start()
 				defer server.Close()
 
@@ -761,14 +715,13 @@ func TestCachedHandler(t *testing.T) {
 
 	r := NewRoute(ctx, testproxyhelpers.GetEndpoint, params)
 	require.NotNil(t, r)
-	r.Initilize()
 
 	workers := 10
 
 	barrier := make(chan struct{})
 	errorsCh := make(chan error, workers)
 
-	server := testproxyhelpers.FakeBackendService(t, testproxyhelpers.DefaultFakeIntrospectorHost)
+	server := testproxyhelpers.FakeBackendService(t, testproxyhelpers.DefaultFakeServiceHost)
 	server.Start()
 	defer server.Close()
 
@@ -791,7 +744,7 @@ func TestCachedHandler(t *testing.T) {
 				require.Nil(t, err)
 
 				w := httptest.NewRecorder()
-				r.CachedHandler(w, req)
+				r.cachedHandler(w, req)
 
 				var respData testproxyhelpers.HTTPBody
 				resp := w.Result()
@@ -854,9 +807,8 @@ func TestRefresh(t *testing.T) {
 
 	r := NewRoute(ctx, testproxyhelpers.GetEndpoint, params)
 	require.NotNil(t, r)
-	r.Initilize()
 
-	server := testproxyhelpers.FakeBackendService(t, testproxyhelpers.DefaultFakeIntrospectorHost)
+	server := testproxyhelpers.FakeBackendService(t, testproxyhelpers.DefaultFakeServiceHost)
 	server.Start()
 	defer server.Close()
 
@@ -872,7 +824,7 @@ func TestRefresh(t *testing.T) {
 				require.Nil(t, err)
 
 				w := httptest.NewRecorder()
-				r.CachedHandler(w, req)
+				r.cachedHandler(w, req)
 
 				var respData testproxyhelpers.HTTPBody
 				resp := w.Result()
@@ -889,12 +841,12 @@ func TestRefresh(t *testing.T) {
 				randomValue := respData.Result.UUID
 
 				// +1 for refreshing the cache
-				for i := 0; i < r.Parameters.Refresh.MaxCount+1; i++ {
+				for i := 0; i < r.parameters.Refresh.MaxCount+1; i++ {
 					req, err = http.NewRequest(http.MethodGet, testproxyhelpers.GetEndpoint, bytes.NewBufferString(testMessage))
 					require.Nil(t, err)
 
 					w = httptest.NewRecorder()
-					r.CachedHandler(w, req)
+					r.cachedHandler(w, req)
 					resp = w.Result()
 					defer resp.Body.Close()
 				}
@@ -907,7 +859,7 @@ func TestRefresh(t *testing.T) {
 				require.Nil(t, err)
 
 				w = httptest.NewRecorder()
-				r.CachedHandler(w, req)
+				r.cachedHandler(w, req)
 
 				resp = w.Result()
 				body, err = ioutil.ReadAll(resp.Body)
@@ -932,7 +884,7 @@ func TestRefresh(t *testing.T) {
 				require.Nil(t, err)
 
 				w := httptest.NewRecorder()
-				r.CachedHandler(w, req)
+				r.cachedHandler(w, req)
 
 				var respData testproxyhelpers.HTTPBody
 				resp := w.Result()
@@ -949,14 +901,14 @@ func TestRefresh(t *testing.T) {
 				randomValue := respData.Result.UUID
 
 				// Sleep for waitig then end of refereshing
-				time.Sleep(r.Parameters.Refresh.Time + 1*time.Second)
+				time.Sleep(r.parameters.Refresh.Time + 1*time.Second)
 
 				// request after refreshing cache
 				req, err = http.NewRequest(http.MethodGet, testproxyhelpers.GetEndpoint, bytes.NewBufferString(testMessage))
 				require.Nil(t, err)
 
 				w = httptest.NewRecorder()
-				r.CachedHandler(w, req)
+				r.cachedHandler(w, req)
 
 				resp = w.Result()
 				body, err = ioutil.ReadAll(resp.Body)
@@ -966,6 +918,7 @@ func TestRefresh(t *testing.T) {
 				require.Equal(t, http.StatusOK, resp.StatusCode)
 				require.Equal(t, rrdata.ResponseCache.String(), resp.Header.Get(rrdata.ResponseSourceHeader))
 
+				respData = testproxyhelpers.HTTPBody{}
 				err = json.Unmarshal(body, &respData)
 				require.Nil(t, err)
 
@@ -980,5 +933,128 @@ func TestRefresh(t *testing.T) {
 			tt.testFunc()
 		})
 	}
+}
 
+// nolint : funlen
+func TestProxyHandler(t *testing.T) {
+	defer dockertest.KillAllDockers()
+	ctx := context.Background()
+	ctx = initApp(ctx)
+	ctx = initLogger(ctx)
+	ctx = initIntrospector(ctx, t)
+	ctx = initExternalCache(ctx, t)
+	ctx, _ = initPublish(ctx, t)
+
+	params := initParameters()
+
+	r := NewRoute(ctx, testproxyhelpers.GetEndpoint, params)
+	require.NotNil(t, r)
+
+	server := testproxyhelpers.FakeBackendService(t, testproxyhelpers.DefaultFakeServiceHost)
+	server.Start()
+	defer server.Close()
+
+	introspector := testproxyhelpers.FakeIntrospectorService(t, testproxyhelpers.DefaultFakeIntrospectorHost)
+	introspector.Start()
+	defer server.Close()
+
+	tests := []struct {
+		name     string
+		testFunc func()
+	}{
+		{
+			name: "normal request",
+			testFunc: func() {
+				req, err := http.NewRequest(http.MethodGet, testproxyhelpers.GetEndpoint, bytes.NewBufferString(testMessage))
+				require.Nil(t, err)
+				req.Header.Add("authorization", testproxyhelpers.TestToken)
+
+				w := httptest.NewRecorder()
+				r.ProxyHandler(w, req)
+
+				resp := w.Result()
+				body, err := ioutil.ReadAll(resp.Body)
+				require.Nil(t, err)
+				defer resp.Body.Close()
+
+				require.Equal(t, http.StatusOK, resp.StatusCode)
+
+				var respData testproxyhelpers.HTTPBody
+				err = json.Unmarshal(body, &respData)
+				require.Nil(t, err)
+
+				require.Equal(t, rrdata.ResponseBack.String(), resp.Header.Get(rrdata.ResponseSourceHeader))
+			},
+		},
+		{
+			name: "failed authorization",
+			testFunc: func() {
+				req, err := http.NewRequest(http.MethodGet, testproxyhelpers.GetEndpoint, bytes.NewBufferString(testMessage))
+				require.Nil(t, err)
+				req.Header.Add("authorization", testproxyhelpers.BadToken)
+
+				w := httptest.NewRecorder()
+				r.ProxyHandler(w, req)
+
+				resp := w.Result()
+				defer resp.Body.Close()
+
+				require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+			},
+		},
+		{
+			name: "failed limit",
+			testFunc: func() {
+				req, err := http.NewRequest(http.MethodGet, testproxyhelpers.GetEndpoint, bytes.NewBufferString(testMessage))
+				require.Nil(t, err)
+				req.Header.Add("authorization", testproxyhelpers.TestToken)
+
+				var w *httptest.ResponseRecorder
+				for i := 0; i < testLimitCounter+1; i++ {
+					w = httptest.NewRecorder()
+					r.ProxyHandler(w, req)
+				}
+
+				resp := w.Result()
+				defer resp.Body.Close()
+
+				require.Equal(t, http.StatusTooManyRequests, resp.StatusCode)
+			},
+		},
+		{
+			name: "with token, not cached",
+			testFunc: func() {
+				// sleep after rate limit
+				time.Sleep(testLimitPT + 1*time.Second)
+
+				req, err := http.NewRequest(http.MethodGet, testproxyhelpers.GetEndpoint, bytes.NewBufferString(testMessage))
+				require.Nil(t, err)
+				req.Header.Add("authorization", testproxyhelpers.TestToken)
+
+				r.parameters.Cache.Disabled = true
+				w := httptest.NewRecorder()
+				r.ProxyHandler(w, req)
+
+				resp := w.Result()
+				body, err := ioutil.ReadAll(resp.Body)
+				require.Nil(t, err)
+				defer resp.Body.Close()
+
+				require.Equal(t, http.StatusOK, resp.StatusCode)
+
+				var respData testproxyhelpers.HTTPBody
+				err = json.Unmarshal(body, &respData)
+				require.Nil(t, err)
+
+				require.Equal(t, rrdata.ResponseProxy.String(), resp.Header.Get(rrdata.ResponseSourceHeader))
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			tt.testFunc()
+		})
+	}
 }

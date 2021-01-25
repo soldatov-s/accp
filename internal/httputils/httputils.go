@@ -11,6 +11,10 @@ import (
 	"github.com/valyala/bytebufferpool"
 )
 
+const (
+	RequestIDHeader = "x-request-id"
+)
+
 func CopyHeader(dst, src http.Header) {
 	for k, vv := range src {
 		for _, v := range vv {
@@ -28,8 +32,8 @@ func CopyHTTPResponse(w http.ResponseWriter, resp *http.Response) error {
 }
 
 func HashRequest(r *http.Request) (string, error) {
-	var sum []byte
 	introspectBody := r.Header.Get("accp-introspect-body")
+	hashedString := r.URL.RequestURI() + r.Method + introspectBody
 
 	var buf *bytebufferpool.ByteBuffer
 	if r.Body != nil {
@@ -41,11 +45,9 @@ func HashRequest(r *http.Request) (string, error) {
 			return "", err
 		}
 		r.Body = ioutil.NopCloser(bytes.NewReader(buf.Bytes()))
-		sum = sha256.New().Sum([]byte(r.URL.RequestURI() + buf.String() + introspectBody))
-	} else {
-		sum = sha256.New().Sum([]byte(r.URL.RequestURI() + introspectBody))
+		hashedString += buf.String()
 	}
-
+	sum := sha256.New().Sum([]byte(hashedString))
 	return base64.URLEncoding.EncodeToString(sum), nil
 }
 
@@ -60,4 +62,8 @@ func ErrResponse(errormsg string, code int) *http.Response {
 	resp.Header.Set("X-Content-Type-Options", "nosniff")
 
 	return resp
+}
+
+func GetRequestID(r *http.Request) string {
+	return r.Header.Get(RequestIDHeader)
 }

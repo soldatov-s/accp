@@ -8,7 +8,7 @@ import (
 
 const (
 	defaultCounter      = 1000
-	defaultPT           = time.Minute
+	defaultTTL          = time.Minute
 	authorizationHeader = "authorization"
 	ipHeader            = "x-forwarded-for"
 	// default name for default items in mapconfig
@@ -22,19 +22,19 @@ type Config struct {
 	// Cookie is name of cookie in request for limit
 	Cookie helper.Arguments
 	// Limit Count per Time period
-	// Conter limits count of request to API
-	Counter int
-	// PT limits period of requests to API
-	PT time.Duration
+	// MaxCounter limits count of request to API
+	MaxCounter int
+	// TTL limits period of requests to API
+	TTL time.Duration
 }
 
 func (c *Config) SetDefault() {
-	if c.Counter == 0 {
-		c.Counter = defaultCounter
+	if c.MaxCounter == 0 {
+		c.MaxCounter = defaultCounter
 	}
 
-	if c.PT == 0 {
-		c.PT = defaultPT
+	if c.TTL == 0 {
+		c.TTL = defaultTTL
 	}
 }
 
@@ -44,10 +44,10 @@ func (c *Config) Merge(target *Config) *Config {
 	}
 
 	result := &Config{
-		Header:  c.Header,
-		Cookie:  c.Cookie,
-		Counter: c.Counter,
-		PT:      c.PT,
+		Header:     c.Header,
+		Cookie:     c.Cookie,
+		MaxCounter: c.MaxCounter,
+		TTL:        c.TTL,
 	}
 
 	if target == nil {
@@ -72,12 +72,12 @@ func (c *Config) Merge(target *Config) *Config {
 		}
 	}
 
-	if target.Counter > 0 {
-		result.Counter = target.Counter
+	if target.MaxCounter > 0 {
+		result.MaxCounter = target.MaxCounter
 	}
 
-	if target.PT > 0 {
-		result.PT = target.PT
+	if target.TTL > 0 {
+		result.TTL = target.TTL
 	}
 
 	return result
@@ -85,17 +85,20 @@ func (c *Config) Merge(target *Config) *Config {
 
 type MapConfig map[string]*Config
 
-// NewMapConfig creates MapConfig with predefined items "token" and "ip"
+// NewMapConfig creates MapConfig
 func NewMapConfig() MapConfig {
 	l := make(MapConfig)
-	l[defaultItemToken] = &Config{
+	return l
+}
+
+// SetDefault sets default items "token" and "ip"
+func (c MapConfig) SetDefault() {
+	c[defaultItemToken] = &Config{
 		Header: []string{authorizationHeader},
 	}
-	l[defaultItemIP] = &Config{
+	c[defaultItemIP] = &Config{
 		Header: []string{ipHeader},
 	}
-
-	return l
 }
 
 // Merge merges MapConfig

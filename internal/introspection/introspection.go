@@ -38,6 +38,8 @@ type Introspect struct {
 
 // NewIntrospector creates Intrcopector
 func NewIntrospector(ctx context.Context, cfg *Config) (*Introspect, error) {
+	cfg.SetDefault()
+
 	err := cfg.Validate()
 	if err != nil {
 		return nil, err
@@ -98,16 +100,19 @@ func (i *Introspect) extractToken(r *http.Request) (string, error) {
 	}
 
 	// If not token not found in query, try get from Authorization header
-	token := r.Header.Get(authorizationHeader)
+	for _, headerName := range i.cfg.HeaderName {
+		token := r.Header.Get(headerName)
+		if token == "" {
+			continue
+		}
 
-	splitToken := strings.Split(token, " ")
-	if len(splitToken) < 2 {
-		return "", ErrBadAuthRequest
-	}
+		splitToken := strings.Split(token, " ")
+		if len(splitToken) < 2 {
+			token = strings.TrimSpace(splitToken[0])
+		} else {
+			token = strings.TrimSpace(splitToken[1])
+		}
 
-	switch strings.ToLower(strings.TrimSpace(splitToken[0])) {
-	case "bearer", "token":
-		token = strings.TrimSpace(splitToken[1])
 		return token, nil
 	}
 

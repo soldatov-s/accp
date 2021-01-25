@@ -43,8 +43,8 @@ func NewLimitTable(route string, c *Config, cache *external.Cache) *LimitTable {
 	c.SetDefault()
 
 	lt := &LimitTable{
-		pt:       c.PT,
-		maxCount: c.Counter,
+		pt:       c.TTL,
+		maxCount: c.MaxCounter,
 		cache:    cache,
 		route:    route,
 	}

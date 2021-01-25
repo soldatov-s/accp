@@ -12,7 +12,7 @@ import (
 )
 
 func defaultMethods() helper.Arguments {
-	return helper.Arguments{http.MethodGet, http.MethodPut, http.MethodPost}
+	return helper.Arguments{http.MethodGet}
 }
 
 type Parameters struct {
@@ -24,8 +24,8 @@ type Parameters struct {
 	Pool     *httpclient.Config
 	Methods  helper.Arguments
 	RouteKey string
-	// Introspect if true it means that necessary to introspect request
-	Introspect bool
+	// NotIntrospect if true it means that not necessary to introspect request
+	NotIntrospect bool
 	// IntrospectHydration describes hydrations format
 	IntrospectHydration string
 }
@@ -71,7 +71,7 @@ func (p *Parameters) Merge(target *Parameters) *Parameters {
 		Pool:                p.Pool,
 		Limits:              p.Limits,
 		RouteKey:            p.RouteKey,
-		Introspect:          p.Introspect,
+		NotIntrospect:       p.NotIntrospect,
 		IntrospectHydration: p.IntrospectHydration,
 		Methods:             p.Methods,
 	}
@@ -89,8 +89,8 @@ func (p *Parameters) Merge(target *Parameters) *Parameters {
 		}
 	}
 
-	if target.Introspect {
-		result.Introspect = true
+	if target.NotIntrospect {
+		result.NotIntrospect = true
 	}
 
 	if target.IntrospectHydration != "" {

@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	DefaultFakeIntrospectorHost           = "localhost:10000"
+	DefaultFakeIntrospectorHost           = "localhost:10001"
 	DefaultFakeIntrospectorURL            = "http://" + DefaultFakeIntrospectorHost
 	DefaultFakeIntrospectorEndpoint       = "/oauth2/introspect"
 	DefaultFakeIntrospectorContentType    = "application/x-www-form-urlencoded"
@@ -16,6 +16,7 @@ const (
 	DefaultFakeIntrospectorBodyTemplate   = `token_type_hint=access_token&token={{.Token}}`
 	DefaultFakeIntrospectorCookieName     = "access-token"
 	DefaultFakeIntrospectorQueryParamName = "access_token"
+	DefaultFakeIntrospectorHeaderName     = "authorization"
 
 	TestToken = "goodToken"
 	BadToken  = "badToken"
@@ -27,6 +28,10 @@ func DefaultFakeIntrospectorCookiesName() []string {
 
 func DefaultFakeIntrospectorQueryParamsName() []string {
 	return []string{DefaultFakeIntrospectorQueryParamName}
+}
+
+func DefaultFakeIntrospectorHeadersName() []string {
+	return []string{DefaultFakeIntrospectorHeaderName}
 }
 
 func FakeIntrospectorService(t *testing.T, host string) *httptest.Server {

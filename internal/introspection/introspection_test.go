@@ -52,6 +52,7 @@ func initConfig() *Config {
 		BodyTemplate:   testproxyhelpers.DefaultFakeIntrospectorBodyTemplate,
 		CookieName:     testproxyhelpers.DefaultFakeIntrospectorCookiesName(),
 		QueryParamName: testproxyhelpers.DefaultFakeIntrospectorQueryParamsName(),
+		HeaderName:     testproxyhelpers.DefaultFakeIntrospectorHeadersName(),
 		Pool:           initPool(),
 	}
 }
