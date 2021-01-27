@@ -24,7 +24,11 @@ func (c *Config) SetDefault() {
 }
 
 func (c *Config) Validate() error {
-	if len(c.Routes) == 0 {
+	if c == nil {
+		return errors.EmptyConfig("proxy")
+	}
+
+	if c.Routes == nil || len(c.Routes) == 0 {
 		return errors.EmptyConfigParameter("routes")
 	}
 

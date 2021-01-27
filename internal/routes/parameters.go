@@ -11,6 +11,11 @@ import (
 	"github.com/soldatov-s/accp/x/helper"
 )
 
+const (
+	MergeStrategyUnion     = "union"
+	MergeStrategyOverwrite = "overwrite"
+)
+
 func defaultMethods() helper.Arguments {
 	return helper.Arguments{http.MethodGet}
 }
@@ -28,6 +33,10 @@ type Parameters struct {
 	NotIntrospect bool
 	// IntrospectHydration describes hydrations format
 	IntrospectHydration string
+	// MergeStrategy is a strategy of merging:
+	// - union src and target, default
+	// - overwrite src by target
+	MergeStrategy string
 }
 
 func (p *Parameters) SetDefault() {
@@ -36,16 +45,20 @@ func (p *Parameters) SetDefault() {
 	}
 
 	if p.Cache == nil {
-		p.Cache = &cache.Config{}
+		p.Cache = &cache.Config{
+			Disabled: true,
+		}
 	}
 
 	p.Cache.SetDefault()
 
-	if p.Refresh == nil {
+	if p.Refresh == nil && !p.Cache.Disabled {
 		p.Refresh = &refresh.Config{}
 	}
 
-	p.Refresh.SetDefault()
+	if p.Refresh != nil {
+		p.Refresh.SetDefault()
+	}
 
 	if p.Pool == nil {
 		p.Pool = &httpclient.Config{}
@@ -56,8 +69,13 @@ func (p *Parameters) SetDefault() {
 	if p.Limits == nil {
 		p.Limits = limits.NewMapConfig()
 	}
+
+	if p.MergeStrategy == "" {
+		p.MergeStrategy = MergeStrategyUnion
+	}
 }
 
+// nolint : gocyclo
 func (p *Parameters) Merge(target *Parameters) *Parameters {
 	if p == nil {
 		return target
@@ -78,6 +96,10 @@ func (p *Parameters) Merge(target *Parameters) *Parameters {
 
 	if target == nil {
 		return result
+	}
+
+	if target.MergeStrategy == MergeStrategyOverwrite {
+		return target
 	}
 
 	if len(target.Methods) > 0 {

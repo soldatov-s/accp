@@ -15,6 +15,10 @@ type Config struct {
 }
 
 func (c *Config) SetDefault() {
+	if c.Disabled {
+		return
+	}
+
 	if c.Memory == nil {
 		c.Memory = &memory.Config{}
 	}
@@ -28,6 +32,10 @@ func (c *Config) SetDefault() {
 }
 
 func (c *Config) Merge(target *Config) *Config {
+	if c == nil {
+		return target
+	}
+
 	result := &Config{
 		Disabled: c.Disabled,
 		Memory:   c.Memory,
@@ -43,11 +51,15 @@ func (c *Config) Merge(target *Config) *Config {
 		return result
 	}
 
+	if !target.Disabled {
+		result.Disabled = false
+	}
+
 	if target.Memory != nil {
 		result.Memory = c.Memory.Merge(target.Memory)
 	}
 
-	if target.External != nil && c.External != nil {
+	if target.External != nil {
 		result.External = c.External.Merge(target.External)
 	}
 

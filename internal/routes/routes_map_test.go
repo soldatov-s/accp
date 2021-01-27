@@ -85,21 +85,62 @@ func TestFindRouteByPath(t *testing.T) {
 
 	rm := make(MapRoutes)
 
-	_, err := rm.AddRouteByPath(ctx, "/api/v1/users", "/api/v1/users", &Parameters{})
-	require.Nil(t, err)
+	tests := []struct {
+		name     string
+		testFunc func()
+	}{
+		{
+			name: "added and find route /api/v1",
+			testFunc: func() {
+				_, err := rm.AddRouteByPath(ctx, "/api/v1", "/api/v1", &Parameters{})
+				require.Nil(t, err)
 
-	r := rm.FindRouteByPath("/api/v1/users")
-	require.NotNil(t, r)
+				r := rm.FindRouteByPath("/api/v1")
+				require.NotNil(t, r)
 
-	t.Logf("route: %+v", r)
+				t.Logf("route: %+v", r.route)
+			},
+		},
+		{
+			name: "added and find route /api/v1/users",
+			testFunc: func() {
+				_, err := rm.AddRouteByPath(ctx, "/api/v1/users", "/api/v1/users", &Parameters{})
+				require.Nil(t, err)
 
-	_, err = rm.AddRouteByPath(ctx, "/api/v1/testers", "/api/v1/testers", &Parameters{})
-	require.Nil(t, err)
+				r := rm.FindRouteByPath("/api/v1/users")
+				require.NotNil(t, r)
 
-	r = rm.FindRouteByPath("/api/v1/testers")
-	require.NotNil(t, r)
+				t.Logf("route: %+v", r.route)
+			},
+		},
+		{
+			name: "added and find route /api/v1/testers",
+			testFunc: func() {
+				_, err := rm.AddRouteByPath(ctx, "/api/v1/testers", "/api/v1/testers", &Parameters{})
+				require.Nil(t, err)
 
-	t.Logf("route: %+v", r)
+				r := rm.FindRouteByPath("/api/v1/testers")
+				require.NotNil(t, r)
+
+				t.Logf("route: %+v", r.route)
+			},
+		},
+		{
+			name: "find route /api/v1/testers",
+			testFunc: func() {
+				r := rm.FindRouteByPath("/api/v1/admins")
+				require.NotNil(t, r)
+
+				t.Logf("route: %+v", r.route)
+			},
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			tt.testFunc()
+		})
+	}
 }
 
 func TestFindRouteByHTTPRequest(t *testing.T) {

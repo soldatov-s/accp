@@ -14,6 +14,10 @@ import (
 	"github.com/streadway/amqp"
 )
 
+const (
+	disabledPublishing = "disabled"
+)
+
 type empty struct{}
 
 type Publish struct {
@@ -40,6 +44,8 @@ func NewPublisher(ctx context.Context, cfg *Config) (*Publish, error) {
 		cfg: cfg,
 		log: logger.GetPackageLogger(ctx, empty{}),
 	}
+
+	p.log.Info().Msg("publisher created")
 
 	return p, nil
 }
@@ -119,7 +125,7 @@ func (p *Publish) Shutdown() error {
 
 // SendMessage publish message to exchange
 func (p *Publish) SendMessage(message interface{}, routingKey string) error {
-	if routingKey == "" || message == nil {
+	if routingKey == "" || routingKey == disabledPublishing || message == nil {
 		return nil
 	}
 

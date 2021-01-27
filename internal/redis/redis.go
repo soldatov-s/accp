@@ -43,6 +43,8 @@ func NewClient(ctx context.Context, cfg *Config) (*Client, error) {
 		opt: connOptions,
 	}
 
+	r.log.Info().Msg("redis client created")
+
 	return r, nil
 }
 

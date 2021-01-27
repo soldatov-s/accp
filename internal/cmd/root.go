@@ -6,6 +6,7 @@ import (
 	"os"
 
 	// other
+	"github.com/soldatov-s/accp/internal/cfg"
 	"github.com/spf13/cobra"
 )
 
@@ -25,7 +26,7 @@ func Execute() {
 		Run:   serveHandler,
 	}
 
-	serveCmd.Flags().StringP("config", "c", ".", "path to config")
+	serveCmd.Flags().StringP("config", "c", cfg.DefaultConfigPath, "path to config")
 	rootCmd.AddCommand(serveCmd)
 
 	if err := rootCmd.Execute(); err != nil {

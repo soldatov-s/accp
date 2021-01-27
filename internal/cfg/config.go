@@ -1,6 +1,8 @@
 package cfg
 
 import (
+	"fmt"
+	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -16,7 +18,7 @@ import (
 )
 
 const (
-	DefaultConfigPath = "/etc/accp/config.yml"
+	DefaultConfigPath = "./config.yml"
 )
 
 type Config struct {
@@ -35,7 +37,17 @@ func NewConfig(command *cobra.Command) (*Config, error) {
 	}
 
 	if configPath == "" {
+		fmt.Printf("config path is empty, tries default path: %s\n", DefaultConfigPath)
 		configPath = DefaultConfigPath
+	}
+
+	if _, err = os.Stat(configPath); os.IsNotExist(err) {
+		fmt.Printf("config path %s not exist, tries default path: %s\n", configPath, DefaultConfigPath)
+		configPath = DefaultConfigPath
+		_, err = os.Stat(configPath)
+		if os.IsNotExist(err) {
+			return nil, err
+		}
 	}
 
 	configPath, configName := path.Split(configPath)

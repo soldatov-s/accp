@@ -150,6 +150,7 @@ func (l *Logger) IsInitialized() bool {
 
 // Initialize initilizes fields for domains and packages
 func Initialize(parent *zerolog.Logger, emptyStruct interface{}) (log zerolog.Logger) {
+	log = parent.With().Logger()
 	res := false
 	packageTypes := []string{"domains", "internal"}
 	packageType := ""
@@ -157,11 +158,10 @@ func Initialize(parent *zerolog.Logger, emptyStruct interface{}) (log zerolog.Lo
 	pathElements := strings.Split(pkgPath, "/")
 
 	i := 0
-
 	for _, pathElement := range pathElements {
 		for _, packageType = range packageTypes {
 			if pathElement == packageType {
-				log = parent.With().Str("type", pathElements[i]).Logger()
+				log = log.With().Str("type", pathElements[i]).Logger()
 				log = log.With().Str("package", pathElements[i+1]).Logger()
 				res = true
 
@@ -185,7 +185,7 @@ func Initialize(parent *zerolog.Logger, emptyStruct interface{}) (log zerolog.Lo
 		log = log.With().Str("subsystem", pathElements[i+2]).Logger()
 	}
 
-	log.Info().Msg("initializing...")
+	log.Info().Msg("initializing loggers...")
 
 	return log
 }

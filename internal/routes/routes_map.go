@@ -16,16 +16,17 @@ func (m MapRoutes) FindRouteByPath(path string) *Route {
 		ok    bool
 	)
 
-	tmp := m
+	routes := m
 
 	for _, s := range strs {
 		if s == "" {
 			continue
 		}
-		if route, ok = tmp[s]; !ok {
-			return route
+		tmp := route
+		if route, ok = routes[s]; !ok {
+			return tmp
 		}
-		tmp = route.Routes
+		routes = route.Routes
 	}
 
 	return route

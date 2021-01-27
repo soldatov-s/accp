@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	testIP              = "10.1.10.113"
+	testIP              = "10.1.10.113, 192.168.1.100"
 	testBearerToken     = "bearer " + testToken
 	testUserCookieName  = "user-cookie"
 	testUserCookieValue = "test_value"
@@ -32,17 +32,22 @@ func TestNewLimitedParamsOfRequest(t *testing.T) {
 				req.Header.Add(authorizationHeader, testToken)
 				req.Header.Add(ipHeader, testIP)
 
-				lp := NewLimitedParamsOfRequest(mc, req)
+				lp, err := NewLimitedParamsOfRequest(mc, req)
+				require.Nil(t, err)
 				require.NotNil(t, lp)
 				require.Equal(t, 2, len(lp))
 
 				v, ok := lp[defaultItemToken]
 				require.True(t, ok)
-				require.Equal(t, testToken, v)
+				hashedValue, err := limitHash(testToken)
+				require.Nil(t, err)
+				require.Equal(t, hashedValue, v)
 
 				v, ok = lp[defaultItemIP]
 				require.True(t, ok)
-				require.Equal(t, testIP, v)
+				hashedValue, err = limitHash(testIP)
+				require.Nil(t, err)
+				require.Equal(t, hashedValue, v)
 			},
 		},
 		{
@@ -55,17 +60,22 @@ func TestNewLimitedParamsOfRequest(t *testing.T) {
 				req.Header.Add(authorizationHeader, testBearerToken)
 				req.Header.Add(ipHeader, testIP)
 
-				lp := NewLimitedParamsOfRequest(mc, req)
+				lp, err := NewLimitedParamsOfRequest(mc, req)
+				require.Nil(t, err)
 				require.NotNil(t, lp)
 				require.Equal(t, 2, len(lp))
 
 				v, ok := lp[defaultItemToken]
 				require.True(t, ok)
-				require.Equal(t, testToken, v)
+				hashedValue, err := limitHash(testToken)
+				require.Nil(t, err)
+				require.Equal(t, hashedValue, v)
 
 				v, ok = lp[defaultItemIP]
 				require.True(t, ok)
-				require.Equal(t, testIP, v)
+				hashedValue, err = limitHash(testIP)
+				require.Nil(t, err)
+				require.Equal(t, hashedValue, v)
 			},
 		},
 		{
@@ -76,19 +86,24 @@ func TestNewLimitedParamsOfRequest(t *testing.T) {
 				req, err := http.NewRequest(http.MethodGet, testProxyHelpers.DefaultFakeServiceURL+testProxyHelpers.GetEndpoint, nil)
 				require.Nil(t, err)
 				req.Header.Add(authorizationHeader, testToken)
-				req.Header.Add(ipHeader, testIP+", 192.168.1.100")
+				req.Header.Add(ipHeader, testIP)
 
-				lp := NewLimitedParamsOfRequest(mc, req)
+				lp, err := NewLimitedParamsOfRequest(mc, req)
+				require.Nil(t, err)
 				require.NotNil(t, lp)
 				require.Equal(t, 2, len(lp))
 
 				v, ok := lp[defaultItemToken]
 				require.True(t, ok)
-				require.Equal(t, testToken, v)
+				hashedValue, err := limitHash(testToken)
+				require.Nil(t, err)
+				require.Equal(t, hashedValue, v)
 
 				v, ok = lp[defaultItemIP]
 				require.True(t, ok)
-				require.Equal(t, testIP, v)
+				hashedValue, err = limitHash(testIP)
+				require.Nil(t, err)
+				require.Equal(t, hashedValue, v)
 			},
 		},
 		{
@@ -105,17 +120,22 @@ func TestNewLimitedParamsOfRequest(t *testing.T) {
 
 				req.Header.Add(ipHeader, testIP)
 
-				lp := NewLimitedParamsOfRequest(mc, req)
+				lp, err := NewLimitedParamsOfRequest(mc, req)
+				require.Nil(t, err)
 				require.NotNil(t, lp)
 				require.Equal(t, 2, len(lp))
 
 				v, ok := lp[defaultItemToken]
 				require.True(t, ok)
-				require.Equal(t, testToken, v)
+				hashedValue, err := limitHash(testToken)
+				require.Nil(t, err)
+				require.Equal(t, hashedValue, v)
 
 				v, ok = lp[defaultItemIP]
 				require.True(t, ok)
-				require.Equal(t, testIP, v)
+				hashedValue, err = limitHash(testIP)
+				require.Nil(t, err)
+				require.Equal(t, hashedValue, v)
 			},
 		},
 		{
@@ -138,22 +158,29 @@ func TestNewLimitedParamsOfRequest(t *testing.T) {
 
 				req.Header.Add(ipHeader, testIP)
 
-				lp := NewLimitedParamsOfRequest(mc, req)
+				lp, err := NewLimitedParamsOfRequest(mc, req)
+				require.Nil(t, err)
 				require.NotNil(t, lp)
 				require.Equal(t, 3, len(lp))
 
 				v, ok := lp[defaultItemToken]
 				require.True(t, ok)
-				require.Equal(t, testToken, v)
+				hashedValue, err := limitHash(testToken)
+				require.Nil(t, err)
+				require.Equal(t, hashedValue, v)
 
 				v, ok = lp[defaultItemIP]
 				require.True(t, ok)
-				require.Equal(t, testIP, v)
+				hashedValue, err = limitHash(testIP)
+				require.Nil(t, err)
+				require.Equal(t, hashedValue, v)
 
 				t.Log(lp)
 				v, ok = lp[testItemUser]
 				require.True(t, ok)
-				require.Equal(t, testUserCookieValue, v)
+				hashedValue, err = limitHash(testUserCookieValue)
+				require.Nil(t, err)
+				require.Equal(t, hashedValue, v)
 			},
 		},
 	}

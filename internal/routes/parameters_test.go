@@ -14,19 +14,56 @@ import (
 )
 
 func TestSetDefault(t *testing.T) {
-	p := &Parameters{}
-	p.SetDefault()
-	require.Equal(t, defaultMethods(), p.Methods)
-	require.NotNil(t, p.Cache)
-	require.NotNil(t, p.Cache.Memory)
-	require.NotNil(t, p.Refresh)
-	require.NotEmpty(t, p.Refresh.MaxCount)
-	require.NotEmpty(t, p.Refresh.Time)
-	require.NotNil(t, p.Pool)
-	require.NotEmpty(t, p.Pool.Size)
-	require.NotEmpty(t, p.Pool.Timeout)
-	require.NotNil(t, p.Limits)
-	require.Equal(t, 0, len(p.Limits))
+	tests := []struct {
+		name     string
+		testFunc func()
+	}{
+		{
+			name: "test empty parameters",
+			testFunc: func() {
+				p := &Parameters{}
+
+				p.SetDefault()
+				require.Equal(t, defaultMethods(), p.Methods)
+				require.NotNil(t, p.Cache)
+				require.True(t, p.Cache.Disabled)
+				require.NotNil(t, p.Pool)
+				require.NotEmpty(t, p.Pool.Size)
+				require.NotEmpty(t, p.Pool.Timeout)
+				require.NotNil(t, p.Limits)
+				require.Equal(t, 0, len(p.Limits))
+			},
+		},
+		{
+			name: "test cache enabled",
+			testFunc: func() {
+				p := &Parameters{
+					Cache: &cache.Config{
+						Disabled: false,
+					},
+				}
+
+				p.SetDefault()
+				require.Equal(t, defaultMethods(), p.Methods)
+				require.NotNil(t, p.Cache)
+				require.NotNil(t, p.Cache.Memory)
+				require.NotNil(t, p.Refresh)
+				require.NotEmpty(t, p.Refresh.MaxCount)
+				require.NotEmpty(t, p.Refresh.Time)
+				require.NotNil(t, p.Pool)
+				require.NotEmpty(t, p.Pool.Size)
+				require.NotEmpty(t, p.Pool.Timeout)
+				require.NotNil(t, p.Limits)
+				require.Equal(t, 0, len(p.Limits))
+			},
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			tt.testFunc()
+		})
+	}
 }
 
 // nolint : funlen

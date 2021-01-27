@@ -32,8 +32,7 @@ func CopyHTTPResponse(w http.ResponseWriter, resp *http.Response) error {
 }
 
 func HashRequest(r *http.Request) (string, error) {
-	introspectBody := r.Header.Get("accp-introspect-body")
-	hashedString := r.URL.RequestURI() + r.Method + introspectBody
+	hashedString := r.URL.RequestURI() + r.Method
 
 	var buf *bytebufferpool.ByteBuffer
 	if r.Body != nil {
@@ -66,4 +65,29 @@ func ErrResponse(errormsg string, code int) *http.Response {
 
 func GetRequestID(r *http.Request) string {
 	return r.Header.Get(RequestIDHeader)
+}
+
+func CopyRequestWithDSN(req *http.Request, dsn string) (*http.Request, error) {
+	var (
+		proxyReq *http.Request
+		err      error
+	)
+	if req.Body != nil {
+		var body []byte
+		body, err = ioutil.ReadAll(req.Body)
+		if err != nil {
+			return nil, err
+		}
+		req.Body = ioutil.NopCloser(bytes.NewReader(body))
+		proxyReq, err = http.NewRequest(req.Method, dsn+req.URL.String(), bytes.NewReader(body))
+	} else {
+		proxyReq, err = http.NewRequest(req.Method, dsn+req.URL.String(), nil)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	CopyHeader(proxyReq.Header, req.Header)
+
+	return proxyReq, nil
 }

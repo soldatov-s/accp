@@ -32,8 +32,6 @@ func NewCache(ctx context.Context, cfg *Config) *Cache {
 		log: logger.GetPackageLogger(ctx, empty{}),
 	}
 
-	c.log.Info().Msg("created inmemory cache")
-
 	if c.cfg.TTL > 0 {
 		c.clearTimer = time.AfterFunc(c.cfg.TTL, c.ClearCache)
 	}
@@ -41,6 +39,8 @@ func NewCache(ctx context.Context, cfg *Config) *Cache {
 	if c.cfg.TTLErr > 0 {
 		c.clearErrTimer = time.AfterFunc(c.cfg.TTLErr, c.ClearErrCache)
 	}
+
+	c.log.Info().Msg("created inmemory cache")
 
 	return c
 }

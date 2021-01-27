@@ -4,12 +4,12 @@ logger:
   # log with trace info
   withtrace: false
   # verbose level: debug, warn, error, fatal, info
-  level: info
+  level: debug
 
 # introspection service
 introspector:
   # introspector dsn
-  dsn: http://192.168.100.48:30611
+  dsn: http://localhost:10001
   # endpoint with introspection handler
   endpoint: /oauth2/introspect
   # accepted content-type
@@ -20,7 +20,7 @@ introspector:
   validmarker: '"active":true'
   # the body template for sending access-token to introspection service
   bodytemplate: "token_type_hint=access_token&token={{.Token}}"
-  # trimed fields in aswer from introspection service
+  # trimmed fields in answer from introspection service
   # the answer will be added in header of request before it will be passed to backend
   # not all fields from answer must be added in request
   trimedfilds: ["exp", "iat"]
@@ -50,8 +50,8 @@ rabbitmq:
   # rabbitmq dsn
   dsn: amqp://guest:guest@rabbitmq:5672
   backoffpolicy: [2s, 5s, 10s, 15s, 20s, 25s]
-  # echange name for rabbitmq
-  exchangename: testout.events.dev
+  # exchange name for rabbitmq
+  exchangename: accp.events
 
 admin:
   # interface:port for admin, default 0.0.0.0:9100
@@ -124,9 +124,9 @@ proxy:
             # the config for automatic refreshing cache
             refresh:
               # the maximum of requests after which will be refreshed cache
-              count:
+              count: 10
               # the refresh period
-              time: 2m
+              time: 15s
             # the config for cache
             cache:
               memory:
@@ -140,13 +140,3 @@ proxy:
             # routes:
             #  parameters:
             #  ...
-  # proxied route
-  /api/v2/:
-    # route parameters
-    parameters:
-      # notintrospect is a flag that introspection for this route disabled
-      notintrospect: true
-      # the config for cache
-      cache:
-        # disabled is a flag that cache disabled
-        disabled: true

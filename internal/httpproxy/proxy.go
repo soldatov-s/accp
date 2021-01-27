@@ -55,6 +55,8 @@ func NewHTTPProxy(ctx context.Context, cfg *Config) (*HTTPProxy, error) {
 		return nil, err
 	}
 
+	p.log.Info().Msg("proxy created")
+
 	return p, nil
 }
 
@@ -94,7 +96,12 @@ func (p *HTTPProxy) fillRoutes(rc routes.MapConfig, r routes.MapRoutes, parentPa
 
 func (p *HTTPProxy) proxyHandler(w http.ResponseWriter, r *http.Request) {
 	route := p.routes.FindRouteByHTTPRequest(r)
-	route.ProxyHandler(w, r)
+	if route != nil {
+		route.ProxyHandler(w, r)
+		return
+	}
+	p.log.Error().Msgf("route %s not found", r.URL.String())
+	http.Error(w, "route "+r.URL.String()+" not found", http.StatusNotFound)
 }
 
 func (p *HTTPProxy) hydrationID(next http.Handler) http.Handler {
@@ -118,9 +125,9 @@ func (p *HTTPProxy) hydrationID(next http.Handler) http.Handler {
 	})
 }
 
-func (p *HTTPProxy) Start() {
+func (p *HTTPProxy) Start() error {
 	p.log.Debug().Msg("start proxy")
-	p.log.Fatal().Err(p.srv.ListenAndServe()).Msg("failed to start proxy")
+	return p.srv.ListenAndServe()
 }
 
 func (p *HTTPProxy) Shutdown() error {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"net/http"
-	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -13,6 +12,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/soldatov-s/accp/internal/cache"
 	"github.com/soldatov-s/accp/internal/cache/cachedata"
+	cacheerrors "github.com/soldatov-s/accp/internal/cache/errors"
 	"github.com/soldatov-s/accp/internal/httpclient"
 	"github.com/soldatov-s/accp/internal/httputils"
 	"github.com/soldatov-s/accp/internal/introspection"
@@ -28,6 +28,7 @@ const (
 	hydrationIntrospectPlainText = "plaintext"
 	hydrationIntrospectBase64    = "base64"
 	hydrationIntrospectHeader    = "accp-introspect-body"
+	disabledCachedHeader         = "accp-cache-disable"
 )
 
 type empty struct{}
@@ -86,7 +87,7 @@ func NewRoute(ctx context.Context, routeName string, params *Parameters) *Route 
 	}
 
 	if len(params.Limits) != 0 {
-		if r.cache.External != nil {
+		if r.cache != nil && r.cache.External != nil {
 			r.limits = limits.NewLimits(r.route, params.Limits, r.cache.External)
 		} else {
 			r.limits = limits.NewLimits(r.route, params.Limits, nil)
@@ -106,10 +107,14 @@ func (r *Route) isExcluded() bool {
 func (r *Route) checkLimits(req *http.Request) (*bool, error) {
 	result := false
 	if len(r.parameters.Limits) == 0 {
+		r.log.Debug().Msgf("limits disabled for route: %s", r.route)
 		return &result, nil
 	}
 
-	limitList := limits.NewLimitedParamsOfRequest(r.parameters.Limits, req)
+	limitList, err := limits.NewLimitedParamsOfRequest(r.parameters.Limits, req)
+	if err != nil {
+		return nil, err
+	}
 	if len(limitList) == 0 {
 		return &result, nil
 	}
@@ -119,7 +124,7 @@ func (r *Route) checkLimits(req *http.Request) (*bool, error) {
 		if err := r.limits[k].Check(v, &result); err != nil {
 			return nil, err
 		} else if result {
-			r.log.Debug().Msgf("limit reached: %s:%s", k, v)
+			r.log.Debug().Str("requestID", httputils.GetRequestID(req)).Msgf("limit reached: %s:%s", k, v)
 			break
 		}
 	}
@@ -138,14 +143,6 @@ func (r *Route) refreshHandler(hk string, data *rrdata.RequestResponseData) erro
 	req, err := data.Request.BuildRequest()
 	if err != nil {
 		return errors.Wrap(err, "failed to build request")
-	}
-
-	if err = r.hydrationIntrospect(req); err != nil {
-		r.log.Err(err).Msg("")
-		if err = r.cache.Delete(hk); err != nil {
-			return errors.Wrap(err, "introspection failed, delete key failed")
-		}
-		return errors.Wrap(err, "introspection failed")
 	}
 
 	client := r.pool.GetFromPool()
@@ -206,27 +203,27 @@ func (r *Route) requestToBack(hk string, w http.ResponseWriter, req *http.Reques
 	rrData := rrdata.NewRequestResponseData(hk, r.parameters.Refresh.MaxCount, r.cache.External)
 
 	var resp *http.Response
-	req.URL, err = url.Parse(r.parameters.DSN + req.URL.String())
+	proxyReq, err := httputils.CopyRequestWithDSN(req, r.parameters.DSN)
 	if err != nil {
 		resp = httputils.ErrResponse(err.Error(), http.StatusServiceUnavailable)
 		rrData.Request = nil
 	} else {
 		// nolint : bodyclose
-		if err = rrData.Request.Read(req); err != nil {
+		if err = rrData.Request.Read(proxyReq); err != nil {
 			resp = httputils.ErrResponse(err.Error(), http.StatusServiceUnavailable)
 			rrData.Request = nil
-		} else if resp, err = client.Do(req); err != nil {
+		} else if resp, err = client.Do(proxyReq); err != nil {
 			resp = httputils.ErrResponse(err.Error(), http.StatusServiceUnavailable)
 		}
 	}
 	defer resp.Body.Close()
 
 	if err := rrData.Response.Read(resp); err != nil {
-		r.log.Err(err).Msg("failed to read request/response data")
+		r.log.Err(err).Str("requestID", httputils.GetRequestID(req)).Msg("failed to read request/response data")
 	}
 
 	if err := rrData.Response.Write(w, rrdata.ResponseBack); err != nil {
-		r.log.Err(err).Msg("failed to write data to client from response")
+		r.log.Err(err).Str("requestID", httputils.GetRequestID(req)).Msg("failed to write data to client from response")
 	}
 
 	return rrData
@@ -237,17 +234,17 @@ func (r *Route) notCached(w http.ResponseWriter, req *http.Request) {
 	client := r.pool.GetFromPool()
 	defer r.pool.PutToPool(client)
 
+	r.log.Debug().Msg(req.URL.String())
+
 	var err error
-	req.URL, err = url.Parse(r.parameters.DSN + req.URL.String())
+	proxyReq, err := httputils.CopyRequestWithDSN(req, r.parameters.DSN)
 	if err != nil {
-		r.log.Err(err).Str("requestID", httputils.GetRequestID(req)).Msg("parsing request url failed")
+		r.log.Err(err).Str("requestID", httputils.GetRequestID(req)).Msg("request duplication failed")
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
 
-	r.log.Debug().Msg(req.URL.String())
-
-	resp, err := client.Do(req)
+	resp, err := client.Do(proxyReq)
 	if err != nil {
 		r.log.Err(err).Str("requestID", httputils.GetRequestID(req)).Msg("request to back failed")
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
@@ -333,17 +330,23 @@ func (r *Route) responseHandle(data *rrdata.RequestResponseData, w http.Response
 func (r *Route) waitAnswer(w http.ResponseWriter, req *http.Request, hk string, ch chan struct{}) {
 	<-ch
 
-	if data, err := r.cache.Select(hk); err == nil {
-		r.responseHandle(data, w, req, hk)
+	var (
+		data *rrdata.RequestResponseData
+		err  error
+	)
+	if data, err = r.cache.Select(hk); err != nil {
+		r.log.Err(err).Str("requestID", httputils.GetRequestID(req)).Msg("failed to get data from cache")
+		http.Error(w, "failed to get data from cache", http.StatusServiceUnavailable)
 		return
 	}
 
-	http.Error(w, "failed to get data from cache", http.StatusServiceUnavailable)
+	r.responseHandle(data, w, req, hk)
 }
 
 func (r *Route) cachedHandler(w http.ResponseWriter, req *http.Request) {
 	hk, err := httputils.HashRequest(req)
 	if err != nil {
+		r.log.Err(err).Str("requestID", httputils.GetRequestID(req)).Msg("failed to calculate request hash")
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
@@ -352,6 +355,8 @@ func (r *Route) cachedHandler(w http.ResponseWriter, req *http.Request) {
 	if data, err1 := r.cache.Select(hk); err1 == nil {
 		r.responseHandle(data, w, req, hk)
 		return
+	} else if err1 != cacheerrors.ErrNotFound {
+		r.log.Err(err1).Str("requestID", httputils.GetRequestID(req)).Msg("failed to get data from cache")
 	}
 
 	// Check that we not started to handle the request
@@ -376,7 +381,7 @@ func (r *Route) cachedHandler(w http.ResponseWriter, req *http.Request) {
 			rrData := r.requestToBack(hk, w, req)
 			// Save answer to mem cache
 			if err := r.cache.Add(hk, rrData); err != nil {
-				r.log.Err(err).Msg("failed to save data to cache")
+				r.log.Err(err).Str("requestID", httputils.GetRequestID(req)).Msg("failed to save data to cache")
 			}
 
 			close(ch)
@@ -393,6 +398,14 @@ func (r *Route) cachedHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Route) ProxyHandler(w http.ResponseWriter, req *http.Request) {
+	r.log.Debug().Msgf("proxy route: %s", r.route)
+
+	if r.parameters.DSN == "" {
+		r.log.Error().Msgf("route %s not found", req.URL.String())
+		http.Error(w, "route "+req.URL.String()+" not found", http.StatusNotFound)
+		return
+	}
+
 	// Checking an authorization token
 	err := r.hydrationIntrospect(req)
 	var e *introspection.ErrTokenInactive
@@ -417,8 +430,10 @@ func (r *Route) ProxyHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// It's a cached request, checking allowed methods
-	if !r.parameters.Cache.Disabled && r.parameters.Methods.Has(req.Method) {
+	// It's a cached request, checking allowed methods, check header
+	if !r.parameters.Cache.Disabled &&
+		r.parameters.Methods.Has(req.Method) &&
+		req.Header.Get(disabledCachedHeader) != "true" {
 		r.cachedHandler(w, req)
 		return
 	}
