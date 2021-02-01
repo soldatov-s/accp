@@ -32,12 +32,12 @@ type HTTPProxy struct {
 }
 
 func NewHTTPProxy(ctx context.Context, cfg *Config) (*HTTPProxy, error) {
-	cfg.SetDefault()
-
 	err := cfg.Validate()
 	if err != nil {
 		return nil, err
 	}
+
+	cfg.SetDefault()
 
 	p := &HTTPProxy{
 		ctx:          ctx,

@@ -9,22 +9,26 @@ services:
       - 5672:5672
 
   redis:
-    image: "redis:alpine3.12"
+    image: "redislabs/rejson:1.0.6"
     ports:
       - "6379:6379"
     env_file:
       - variables.env
 
   service:
-    container_name: accp
-    build: ./
-    image: soldatov-s/acc
+    container_name: ${APP_NAME}
+    build:
+      context: .
+      args:
+        - APP_NAME=${APP_NAME}
+        - PACKAGE=${PACKAGE}
+    image: ${REGISTRY}/${APP_NAME}
     depends_on:
       - rabbitmq
       - redis
     env_file:
       - variables.env
-    command: serve
+    command: serve -c /etc/accp/config.yml
     ports:
       - "9000:9000"
       - "9100:9100"

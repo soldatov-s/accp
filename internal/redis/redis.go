@@ -28,6 +28,10 @@ type Client struct {
 }
 
 func NewClient(ctx context.Context, cfg *Config) (*Client, error) {
+	if cfg == nil {
+		return nil, nil
+	}
+
 	cfg.SetDefault()
 
 	// Connect to database.

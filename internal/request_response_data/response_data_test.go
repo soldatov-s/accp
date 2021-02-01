@@ -25,10 +25,13 @@ const (
 
 func TestResponseSource_String(t *testing.T) {
 	r := ResponseBack
-	require.Equal(t, "back", r.String())
+	require.Equal(t, "MISS", r.String())
 
 	r = ResponseCache
-	require.Equal(t, "cache", r.String())
+	require.Equal(t, "HIT", r.String())
+
+	r = ResponseBypass
+	require.Equal(t, "BYPASS", r.String())
 }
 
 func initHTTPResponse() *http.Response {

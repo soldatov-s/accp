@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	ResponseCachedHeader = "accp-cached"
-	ResponseSourceHeader = "accp-source"
+	ResponseCachedHeader = "Accp-Cached"
+	ResponseSourceHeader = "X-Cache-Status"
 )
 
 type ResponseSource int
@@ -25,11 +25,11 @@ type ResponseSource int
 const (
 	ResponseBack ResponseSource = iota
 	ResponseCache
-	ResponseProxy
+	ResponseBypass
 )
 
 func (r ResponseSource) String() string {
-	return []string{"back", "cache", "proxy"}[r]
+	return []string{"MISS", "HIT", "BYPASS"}[r]
 }
 
 type ResponseData struct {

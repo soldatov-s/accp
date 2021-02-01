@@ -38,6 +38,10 @@ type Introspect struct {
 
 // NewIntrospector creates Intrcopector
 func NewIntrospector(ctx context.Context, cfg *Config) (*Introspect, error) {
+	if cfg == nil {
+		return nil, nil
+	}
+
 	cfg.SetDefault()
 
 	err := cfg.Validate()

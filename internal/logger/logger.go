@@ -96,6 +96,10 @@ func NewLogger() *Logger {
 }
 
 func (l *Logger) Initialize(cfg *Config) {
+	if cfg == nil {
+		return
+	}
+
 	cfg.SetDefault()
 	switch strings.ToUpper(cfg.Level) {
 	case LoggerLevelDebug:

@@ -13,6 +13,7 @@ import (
 	"github.com/soldatov-s/accp/internal/cache"
 	"github.com/soldatov-s/accp/internal/cache/cachedata"
 	cacheerrors "github.com/soldatov-s/accp/internal/cache/errors"
+	"github.com/soldatov-s/accp/internal/captcha"
 	"github.com/soldatov-s/accp/internal/httpclient"
 	"github.com/soldatov-s/accp/internal/httputils"
 	"github.com/soldatov-s/accp/internal/introspection"
@@ -27,8 +28,9 @@ import (
 const (
 	hydrationIntrospectPlainText = "plaintext"
 	hydrationIntrospectBase64    = "base64"
-	hydrationIntrospectHeader    = "accp-introspect-body"
-	disabledCachedHeader         = "accp-cache-disable"
+	hydrationIntrospectHeader    = "Accp-Introspect-Body"
+	disabledCachedHeader         = "Accp-Cache-Disable"
+	disabledCapchaHeader         = "Accp-Captcha-Disable"
 )
 
 type empty struct{}
@@ -47,9 +49,18 @@ type Route struct {
 	limits         map[string]*limits.LimitTable
 	route          string
 	introspector   introspection.Introspector
+	captcher       *captcha.GoogleCaptcha
 }
 
 func NewRoute(ctx context.Context, routeName string, params *Parameters) *Route {
+	if routeName == "" {
+		return nil
+	}
+
+	if params == nil {
+		params = &Parameters{}
+	}
+
 	params.SetDefault()
 	r := &Route{
 		ctx:            ctx,
@@ -60,6 +71,12 @@ func NewRoute(ctx context.Context, routeName string, params *Parameters) *Route 
 		waitAnswerList: make(map[string]chan struct{}),
 		waiteAnswerMu:  make(map[string]*sync.Mutex),
 		pool:           httpclient.NewPool(params.Pool),
+	}
+
+	if !params.NotCaptcha {
+		if c := captcha.Get(r.ctx); c != nil {
+			r.captcher = c
+		}
 	}
 
 	if !params.NotIntrospect {
@@ -253,7 +270,7 @@ func (r *Route) notCached(w http.ResponseWriter, req *http.Request) {
 	defer resp.Body.Close()
 
 	// Mark that it is a proxy request
-	resp.Header.Add(rrdata.ResponseSourceHeader, rrdata.ResponseProxy.String())
+	resp.Header.Add(rrdata.ResponseSourceHeader, rrdata.ResponseBypass.String())
 
 	if err := httputils.CopyHTTPResponse(w, resp); err != nil {
 		r.log.Err(err).Str("requestID", httputils.GetRequestID(req)).Msg("copy http response failed")
@@ -262,7 +279,7 @@ func (r *Route) notCached(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Route) hydrationIntrospect(req *http.Request) error {
-	if r.introspector == nil || r.parameters.NotIntrospect {
+	if r.parameters.NotIntrospect || r.introspector == nil {
 		r.log.Debug().Str("requestID", httputils.GetRequestID(req)).Msgf("no introspector or disabled introspection: %s", r.route)
 		return nil
 	}
@@ -286,6 +303,38 @@ func (r *Route) hydrationIntrospect(req *http.Request) error {
 	r.log.Debug().Str("requestID", httputils.GetRequestID(req)).Msgf("introspect header: %s", str)
 
 	return nil
+}
+
+// Checking captcha
+func (r *Route) validateCaptcha(w http.ResponseWriter, req *http.Request) {
+	var (
+		captchaSrc captcha.SrcCaptcha
+		err        error
+	)
+	if !r.parameters.NotCaptcha && req.Header.Get(disabledCapchaHeader) != r.parameters.IgnoreCapchaKey && r.captcher != nil {
+		captchaSrc, err = r.captcher.Validate(req)
+		if errors.Is(err, captcha.ErrCaptchaFailed) {
+			r.log.Err(err).Str("requestID", httputils.GetRequestID(req)).Msg("captcha failed")
+			http.Error(w, "limit reached", http.StatusBadRequest)
+		}
+		if err != nil {
+			r.log.Err(err).Str("requestID", httputils.GetRequestID(req)).Msg("captcha failed")
+			http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		}
+	} else {
+		r.log.Debug().Str("requestID", httputils.GetRequestID(req)).Msgf("no captcher or disabled captcha: %s", r.route)
+	}
+
+	responseWrapper := httputils.NewResponseWrapper(w)
+
+	r.proxyHandler(responseWrapper, req)
+
+	if captchaSrc == captcha.CaptchaFromGoogle && responseWrapper.GetStatusCode() == http.StatusOK {
+		if err := r.captcher.GenerateCaptchaJWT(w); err != nil {
+			r.log.Err(err).Str("requestID", httputils.GetRequestID(req)).Msg("captcha generate jwt failed")
+			http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		}
+	}
 }
 
 // refresh incremets refresh count and checks that we not reached the limit
@@ -396,16 +445,7 @@ func (r *Route) cachedHandler(w http.ResponseWriter, req *http.Request) {
 		r.waitAnswer(w, req, hk, waitCh)
 	}
 }
-
-func (r *Route) ProxyHandler(w http.ResponseWriter, req *http.Request) {
-	r.log.Debug().Msgf("proxy route: %s", r.route)
-
-	if r.parameters.DSN == "" {
-		r.log.Error().Msgf("route %s not found", req.URL.String())
-		http.Error(w, "route "+req.URL.String()+" not found", http.StatusNotFound)
-		return
-	}
-
+func (r *Route) proxyHandler(w http.ResponseWriter, req *http.Request) {
 	// Checking an authorization token
 	err := r.hydrationIntrospect(req)
 	var e *introspection.ErrTokenInactive
@@ -440,4 +480,16 @@ func (r *Route) ProxyHandler(w http.ResponseWriter, req *http.Request) {
 
 	// Ooops, not allowed methods or nor cached request, pass request to backend
 	r.notCached(w, req)
+}
+
+func (r *Route) ProxyHandler(w http.ResponseWriter, req *http.Request) {
+	r.log.Debug().Msgf("proxy route: %s", r.route)
+
+	if r.parameters.DSN == "" {
+		r.log.Error().Msgf("route %s not found", req.URL.String())
+		http.Error(w, "route "+req.URL.String()+" not found", http.StatusNotFound)
+		return
+	}
+
+	r.validateCaptcha(w, req)
 }

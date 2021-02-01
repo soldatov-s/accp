@@ -8,6 +8,10 @@ import (
 	"testing"
 )
 
+const (
+	ContentTypeFormUrlencoded = "application/x-www-form-urlencoded"
+)
+
 func FakeService(t *testing.T, host string, handler http.Handler) *httptest.Server {
 	listener, err := net.Listen("tcp", host)
 	if err != nil {

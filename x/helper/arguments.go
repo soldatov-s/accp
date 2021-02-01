@@ -89,3 +89,17 @@ func (r Arguments) MatchesExact(items ...string) bool {
 
 	return true
 }
+
+func (r Arguments) Merge(src Arguments) Arguments {
+	result := make(Arguments, 0, len(r))
+	copy(result, r)
+
+	for _, v := range src {
+		if result.Matches(v) {
+			continue
+		}
+		result = append(result, v)
+	}
+
+	return result
+}

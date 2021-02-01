@@ -33,6 +33,10 @@ type Publish struct {
 }
 
 func NewPublisher(ctx context.Context, cfg *Config) (*Publish, error) {
+	if cfg == nil {
+		return nil, nil
+	}
+
 	cfg.SetDefault()
 
 	if err := cfg.Validate(); err != nil {

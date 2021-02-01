@@ -3,6 +3,7 @@ module github.com/soldatov-s/accp
 go 1.15
 
 require (
+	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/go-redis/redis/v8 v8.4.2
 	github.com/google/uuid v1.1.2
 	github.com/ory/dockertest/v3 v3.6.2

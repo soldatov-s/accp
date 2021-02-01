@@ -43,7 +43,7 @@ func FakeIntrospectorService(t *testing.T, host string) *httptest.Server {
 
 		if r.Method == http.MethodPost &&
 			r.URL.Path == "/oauth2/introspect" &&
-			r.Header.Get("Content-Type") == "application/x-www-form-urlencoded" {
+			r.Header.Get("Content-Type") == ContentTypeFormUrlencoded {
 			err = r.ParseForm()
 			t.Logf("token %s", r.PostForm.Get("token"))
 			if r.PostForm.Get("token") == TestToken {

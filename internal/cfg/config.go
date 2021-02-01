@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/soldatov-s/accp/internal/admin"
+	"github.com/soldatov-s/accp/internal/captcha"
 	"github.com/soldatov-s/accp/internal/httpproxy"
 	"github.com/soldatov-s/accp/internal/introspection"
 	"github.com/soldatov-s/accp/internal/logger"
@@ -25,6 +26,7 @@ type Config struct {
 	Logger       *logger.Config
 	Admin        *admin.Config
 	Proxy        *httpproxy.Config
+	Captcha      *captcha.Config
 	Introspector *introspection.Config
 	Redis        *redis.Config
 	Rabbitmq     *rabbitmq.Config

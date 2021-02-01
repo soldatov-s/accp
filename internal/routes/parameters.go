@@ -14,6 +14,7 @@ import (
 const (
 	MergeStrategyUnion     = "union"
 	MergeStrategyOverwrite = "overwrite"
+	defaultIgnoreCaptcha   = "q5Nj7nBR75icmDTH8SB51jma"
 )
 
 func defaultMethods() helper.Arguments {
@@ -21,16 +22,18 @@ func defaultMethods() helper.Arguments {
 }
 
 type Parameters struct {
-	DSN      string
-	TTL      time.Duration
-	Limits   limits.MapConfig
-	Refresh  *refresh.Config
-	Cache    *cache.Config
-	Pool     *httpclient.Config
-	Methods  helper.Arguments
-	RouteKey string
+	DSN        string
+	TTL        time.Duration
+	Limits     limits.MapConfig
+	Refresh    *refresh.Config
+	Cache      *cache.Config
+	Pool       *httpclient.Config
+	Methods    helper.Arguments
+	RouteKey   string
+	NotCaptcha bool
 	// NotIntrospect if true it means that not necessary to introspect request
-	NotIntrospect bool
+	NotIntrospect   bool
+	IgnoreCapchaKey string
 	// IntrospectHydration describes hydrations format
 	IntrospectHydration string
 	// MergeStrategy is a strategy of merging:
@@ -73,6 +76,10 @@ func (p *Parameters) SetDefault() {
 	if p.MergeStrategy == "" {
 		p.MergeStrategy = MergeStrategyUnion
 	}
+
+	if p.IgnoreCapchaKey == "" {
+		p.IgnoreCapchaKey = defaultIgnoreCaptcha
+	}
 }
 
 // nolint : gocyclo
@@ -90,6 +97,8 @@ func (p *Parameters) Merge(target *Parameters) *Parameters {
 		Limits:              p.Limits,
 		RouteKey:            p.RouteKey,
 		NotIntrospect:       p.NotIntrospect,
+		NotCaptcha:          p.NotCaptcha,
+		IgnoreCapchaKey:     p.IgnoreCapchaKey,
 		IntrospectHydration: p.IntrospectHydration,
 		Methods:             p.Methods,
 	}
@@ -111,9 +120,8 @@ func (p *Parameters) Merge(target *Parameters) *Parameters {
 		}
 	}
 
-	if target.NotIntrospect {
-		result.NotIntrospect = true
-	}
+	result.NotIntrospect = target.NotIntrospect
+	result.NotCaptcha = target.NotCaptcha
 
 	if target.IntrospectHydration != "" {
 		result.IntrospectHydration = target.IntrospectHydration
@@ -145,6 +153,10 @@ func (p *Parameters) Merge(target *Parameters) *Parameters {
 
 	if target.RouteKey != "" {
 		result.RouteKey = target.RouteKey
+	}
+
+	if target.IgnoreCapchaKey != "" {
+		result.IgnoreCapchaKey = target.IgnoreCapchaKey
 	}
 
 	return result

@@ -6,6 +6,23 @@ logger:
   # verbose level: debug, warn, error, fatal, info
   level: debug
 
+# captcha
+captcha:
+  # JWT token TTL, default 720h
+  tokenttl: 720h
+  # JWT token sign
+  tokensign: zzzzzzzzzzzzz
+  # URL verification
+  verifyurl: https://www.google.com/recaptcha/api/siteverify
+  # google capthca private key
+  key: zzzzzzzzzzzzz
+  # the options of http-clients pool
+  pool:
+    # size of pool, default 20
+    size: 50
+    # response timeout for http-client in pool, default 5s
+    timeout: 10s
+
 # introspection service
 introspector:
   # introspector dsn
@@ -78,6 +95,8 @@ proxy:
         # - nothing or emty - not adds result of introspection to request header
         introspecthydration: plaintext
         dsn: http://localhost:10000
+        # without captcha
+        notcaptcha: true
         # allowed methods, default only GET
         methods: [GET]
         # the options of http-clients pool

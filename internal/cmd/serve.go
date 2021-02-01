@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/soldatov-s/accp/internal/app"
+	"github.com/soldatov-s/accp/internal/captcha"
 	"github.com/soldatov-s/accp/internal/cfg"
 	"github.com/soldatov-s/accp/internal/httpproxy"
 	"github.com/soldatov-s/accp/internal/introspection"
@@ -47,6 +48,11 @@ func serveHandler(command *cobra.Command, _ []string) {
 	ctx, err = introspection.Registrate(ctx, c.Introspector)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to registrate introspection")
+	}
+
+	ctx, err = captcha.Registrate(ctx, c.Captcha)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to registrate captcha")
 	}
 
 	ctx, err = redis.Registrate(ctx, c.Redis)

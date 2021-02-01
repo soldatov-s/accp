@@ -977,6 +977,7 @@ func TestProxyHandler(t *testing.T) {
 				require.Nil(t, err)
 				defer resp.Body.Close()
 
+				t.Log(string(body))
 				require.Equal(t, http.StatusOK, resp.StatusCode)
 
 				var respData testproxyhelpers.HTTPBody
@@ -1046,7 +1047,7 @@ func TestProxyHandler(t *testing.T) {
 				err = json.Unmarshal(body, &respData)
 				require.Nil(t, err)
 
-				require.Equal(t, rrdata.ResponseProxy.String(), resp.Header.Get(rrdata.ResponseSourceHeader))
+				require.Equal(t, rrdata.ResponseBypass.String(), resp.Header.Get(rrdata.ResponseSourceHeader))
 			},
 		},
 	}

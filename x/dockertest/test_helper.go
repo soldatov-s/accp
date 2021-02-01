@@ -46,7 +46,6 @@ func startRedis() (*dockertest.Resource, error) {
 
 // RunRedis runs a Redis database and returns the URL to it.
 func RunRedis() (string, error) {
-	// WASD: adds for gitlab pipeline
 	if gitlab := os.Getenv("GITLAB"); gitlab != "" {
 		return RunRedisGitlabPipeline()
 	}
@@ -83,7 +82,6 @@ func startRabbitMQ() (*dockertest.Resource, error) {
 
 // RunRabbitMQ runs a RabbitMQ and returns the URL to it.
 func RunRabbitMQ() (string, error) {
-	// WASD: adds for gitlab pipeline
 	if gitlab := os.Getenv("GITLAB"); gitlab != "" {
 		return RunRabbitMQGitlabPipeline()
 	}

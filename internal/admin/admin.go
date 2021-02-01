@@ -40,6 +40,10 @@ type Admin struct {
 type empty struct{}
 
 func NewAdmin(ctx context.Context, cfg *Config) (*Admin, error) {
+	if cfg == nil {
+		cfg = &Config{}
+	}
+
 	cfg.SetDefault()
 
 	a := &Admin{

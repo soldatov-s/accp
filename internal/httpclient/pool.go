@@ -11,10 +11,13 @@ type Pool struct {
 }
 
 func NewPool(cfg *Config) *Pool {
+	if cfg == nil {
+		cfg = &Config{}
+	}
+	cfg.SetDefault()
+
 	p := &Pool{}
 	p.ch = make(chan *http.Client, cfg.Size)
-
-	cfg.SetDefault()
 
 	dialer := &net.Dialer{
 		Timeout: cfg.Timeout,
